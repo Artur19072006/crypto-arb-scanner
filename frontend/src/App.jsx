@@ -140,6 +140,10 @@ function App() {
           <span className="metric-label">Opportunities</span>
           <strong>{scannerStatus?.opportunity_count ?? opportunities.length}</strong>
         </div>
+        <div>
+          <span className="metric-label">Connectors</span>
+          <strong>{formatConnectors(scannerStatus?.active_connectors)}</strong>
+        </div>
       </section>
 
       <FilterControls
@@ -352,6 +356,14 @@ function normalizeFilters(filters) {
 
 function toInputValue(value) {
   return value === null || value === undefined ? "" : String(value);
+}
+
+function formatConnectors(connectors) {
+  if (!Array.isArray(connectors) || !connectors.length) {
+    return "-";
+  }
+
+  return connectors.join(", ");
 }
 
 export default App;

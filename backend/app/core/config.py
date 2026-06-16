@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.core.fees import FALLBACK_EXCHANGE_FEES_BY_EXCHANGE
 from app.domain.models import (
     AppConfig,
+    DataSourceMode,
     ExchangeFees,
     ScannerFilters,
     TelegramDisplaySettings,
@@ -54,9 +55,11 @@ def load_app_config(
     fees = _load_fees(raw_config.get("fees"))
     filters = _load_filters(raw_config.get("filters"))
     telegram = _load_telegram_settings(raw_config.get("telegram"))
+    data_source_mode = _load_data_source_mode(raw_config)
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
+        data_source_mode=data_source_mode,
         fees=fees,
         default_filters=filters,
         supported_exchanges=supported_exchanges,
@@ -144,6 +147,18 @@ def _load_telegram_settings(raw_telegram: Any) -> TelegramDisplaySettings:
         enabled=bool(raw_telegram.get("enabled", False)),
         alert_cooldown_seconds=int(raw_telegram.get("alert_cooldown_seconds", 300)),
     )
+
+
+def _load_data_source_mode(raw_config: dict[str, Any]) -> DataSourceMode:
+    raw_mode = raw_config.get("data_source_mode")
+    raw_scanner = raw_config.get("scanner")
+    if raw_mode is None and isinstance(raw_scanner, dict):
+        raw_mode = raw_scanner.get("data_source_mode")
+
+    mode = str(raw_mode or "mock").lower().strip()
+    if mode == "live":
+        return "live"
+    return "mock"
 
 
 def _supported_exchanges(

@@ -12,7 +12,7 @@ This version uses mock bid/ask data only. It does not connect to real exchanges,
 - SQLite-ready folder and database placeholder
 - Config example for fees, filters, blacklist, and Telegram settings
 - Placeholder Telegram notifier that does nothing without future implementation
-- TODO comments for future exchange connectors
+- Connector registry with only the fake connector active in mock mode
 
 ## Project Structure
 
@@ -20,7 +20,7 @@ This version uses mock bid/ask data only. It does not connect to real exchanges,
 backend/
   app/
     api/              FastAPI routes
-    connectors/       Exchange connector interfaces and fake connector
+    connectors/       Exchange connector interface, registry, and fake connector
     core/             Settings placeholder
     db/               SQLite placeholder
     models/           API response models
@@ -95,6 +95,8 @@ Telegram settings are placeholders for now. Do not commit real bot tokens or cha
 
 The backend reads `config/config.yaml` when it exists. If it does not exist, it falls back to `config/config.example.yaml`, then to built-in safe defaults.
 
+`data_source_mode` defaults to `mock`. The value `live` is reserved for future work, but live exchange connectors are not implemented yet.
+
 Frontend-safe settings are exposed at:
 
 ```text
@@ -107,6 +109,17 @@ The backend starts a mock in-memory scanner loop on startup. It refreshes fake m
 http://127.0.0.1:8000/api/status
 ```
 
+## Connector Architecture
+
+- `ExchangeConnector` defines `name`, `data_source`, and `fetch_snapshots()`.
+- `ConnectorRegistry` registers available connectors.
+- Current active connector: `FakeExchangeConnector`.
+- Future real connectors such as Binance and Bybit should be registered through the registry after they exist.
+- Symbol normalization currently supports mock symbols such as `BTCUSDT`, `ETHUSDT`, and `SOLUSDT`.
+- Future exchange format examples: Binance `BTCUSDT`, OKX `BTC-USDT-SWAP`, Gate `BTC_USDT`.
+
+Live exchange WebSocket/REST calls, API keys, order execution, and automatic trading are intentionally not implemented.
+
 ## Development Notes
 
 - Spread logic must use bid/ask data, not last traded price.
@@ -114,4 +127,4 @@ http://127.0.0.1:8000/api/status
 - Short side is the highest bid.
 - Raw spread is `(highest_bid - lowest_ask) / lowest_ask * 100`.
 - Net spread currently uses a conservative mock taker-fee estimate.
-- Real exchange WebSocket connectors should be added later, starting with Binance and then Bybit.
+- Real exchange market-data connectors should be added later, starting with Binance and then Bybit.

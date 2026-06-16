@@ -6,8 +6,9 @@ from app.domain.models import MarketSnapshot
 
 class FakeExchangeConnector(ExchangeConnector):
     name = "fake"
+    data_source = "fake_connector"
 
-    async def get_snapshots(self) -> list[MarketSnapshot]:
+    async def fetch_snapshots(self) -> list[MarketSnapshot]:
         now = datetime.now(timezone.utc)
         next_funding = now + timedelta(hours=4)
 

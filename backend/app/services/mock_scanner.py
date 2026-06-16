@@ -7,6 +7,6 @@ from app.services.spread_engine import calculate_opportunities
 async def get_mock_opportunities(
     filters: ScannerFilters | None = None,
 ) -> list[ArbitrageOpportunity]:
-    snapshots = await FakeExchangeConnector().get_snapshots()
+    snapshots = await FakeExchangeConnector().fetch_snapshots()
     config = get_app_config()
     return calculate_opportunities(snapshots, config.fees, filters)

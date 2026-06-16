@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 LiquidityStatus = Literal["OK", "Thin", "Holey"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
+DataSourceMode = Literal["mock", "live"]
 
 
 class MarketSnapshot(BaseModel):
@@ -59,6 +60,7 @@ class TelegramDisplaySettings(BaseModel):
 
 
 class AppConfig(BaseModel):
+    data_source_mode: DataSourceMode = "mock"
     fees: dict[str, ExchangeFees]
     default_filters: ScannerFilters
     supported_exchanges: tuple[str, ...]
@@ -68,8 +70,10 @@ class AppConfig(BaseModel):
 
 class ScannerStatus(BaseModel):
     data_source: str
+    data_source_mode: DataSourceMode
     mode: Literal["mock"]
     last_updated: datetime | None
     snapshot_count: int = Field(ge=0)
     opportunity_count: int = Field(ge=0)
     enabled_exchanges: tuple[str, ...]
+    active_connectors: tuple[str, ...]
