@@ -1,7 +1,7 @@
 from app.domain.models import ExchangeFees
 
 
-DEFAULT_EXCHANGE_FEES: dict[str, ExchangeFees] = {
+FALLBACK_EXCHANGE_FEES_BY_EXCHANGE: dict[str, ExchangeFees] = {
     "Binance": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
     "Bybit": ExchangeFees(maker_percent=0.02, taker_percent=0.055),
     "OKX": ExchangeFees(maker_percent=0.02, taker_percent=0.05),

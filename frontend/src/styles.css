@@ -25,6 +25,16 @@ textarea {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .app-shell {
   width: min(1420px, calc(100% - 32px));
   margin: 0 auto;
@@ -143,7 +153,8 @@ h1 {
   min-width: 0;
 }
 
-.filter-bar span {
+.filter-bar span,
+.filter-bar legend {
   color: #536255;
   font-size: 0.76rem;
   font-weight: 800;
@@ -164,6 +175,62 @@ h1 {
 .filter-bar input:focus {
   border-color: #3d7b59;
   outline: 2px solid #d9eadf;
+}
+
+.exchange-filter {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.exchange-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.exchange-option {
+  align-items: center;
+  flex-direction: row;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #cfd7c8;
+  border-radius: 8px;
+  background: #fbfcf8;
+}
+
+.exchange-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2c8f4f;
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.filter-actions button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid #266f45;
+  border-radius: 8px;
+  background: #2c8f4f;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.filter-actions .secondary-button {
+  border-color: #cfd7c8;
+  background: #ffffff;
+  color: #39443d;
 }
 
 .table-scroll {

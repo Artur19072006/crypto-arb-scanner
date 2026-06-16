@@ -19,9 +19,9 @@ fees:
     taker_percent: 0.06
 
 filters:
-  min_24h_volume_usd: 400000
-  min_raw_spread_percent: 0.10
-  min_net_spread_percent: 0.00
+  min_volume_24h_usd: 400000
+  min_raw_spread: 0.10
+  min_net_spread: 0.00
   enabled_exchanges:
     - Binance
     - Bybit

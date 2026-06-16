@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchOpportunities } from "./api.js";
+import { fetchOpportunities, fetchSettings } from "./api.js";
 import {
   formatDateTime,
   formatNumber,
@@ -10,15 +10,50 @@ import {
 
 function App() {
   const [opportunities, setOpportunities] = useState([]);
-  const [filters, setFilters] = useState({
-    minRawSpread: "",
-    minNetSpread: "",
-    minVolume24hUsd: ""
-  });
+  const [settings, setSettings] = useState(null);
+  const [defaultFilters, setDefaultFilters] = useState(createEmptyFilters());
+  const [draftFilters, setDraftFilters] = useState(createEmptyFilters());
+  const [appliedFilters, setAppliedFilters] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let isMounted = true;
+
+    async function loadSettings() {
+      setStatus("loading");
+      setError("");
+
+      try {
+        const loadedSettings = await fetchSettings();
+        const loadedDefaults = toUiFilters(loadedSettings.default_filters);
+
+        if (isMounted) {
+          setSettings(loadedSettings);
+          setDefaultFilters(loadedDefaults);
+          setDraftFilters(loadedDefaults);
+          setAppliedFilters(loadedDefaults);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError.message);
+          setStatus("error");
+        }
+      }
+    }
+
+    loadSettings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!appliedFilters) {
+      return undefined;
+    }
+
     let isMounted = true;
 
     async function loadOpportunities() {
@@ -26,7 +61,7 @@ function App() {
       setError("");
 
       try {
-        const data = await fetchOpportunities(filters);
+        const data = await fetchOpportunities(appliedFilters);
         if (isMounted) {
           setOpportunities(data);
           setStatus("ready");
@@ -44,7 +79,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [filters]);
+  }, [appliedFilters]);
 
   const lastUpdated = useMemo(() => {
     if (!opportunities.length) {
@@ -53,6 +88,16 @@ function App() {
 
     return formatDateTime(opportunities[0].timestamp);
   }, [opportunities]);
+
+  function applyFilters() {
+    setAppliedFilters(normalizeFilters(draftFilters));
+  }
+
+  function resetFilters() {
+    const restoredFilters = normalizeFilters(defaultFilters);
+    setDraftFilters(restoredFilters);
+    setAppliedFilters(restoredFilters);
+  }
 
   return (
     <main className="app-shell">
@@ -82,7 +127,14 @@ function App() {
         </div>
       </section>
 
-      <FilterControls filters={filters} onChange={setFilters} />
+      <FilterControls
+        filters={draftFilters}
+        supportedExchanges={settings?.supported_exchanges ?? []}
+        onChange={setDraftFilters}
+        onApply={applyFilters}
+        onReset={resetFilters}
+        disabled={!settings || status === "loading"}
+      />
 
       {status === "error" ? (
         <p className="error-message">{error}</p>
@@ -93,12 +145,35 @@ function App() {
   );
 }
 
-function FilterControls({ filters, onChange }) {
+function FilterControls({
+  filters,
+  supportedExchanges,
+  onChange,
+  onApply,
+  onReset,
+  disabled
+}) {
   function updateFilter(key, value) {
     onChange((currentFilters) => ({
       ...currentFilters,
       [key]: value
     }));
+  }
+
+  function toggleExchange(exchange) {
+    onChange((currentFilters) => {
+      const currentExchanges = new Set(currentFilters.exchanges);
+      if (currentExchanges.has(exchange)) {
+        currentExchanges.delete(exchange);
+      } else {
+        currentExchanges.add(exchange);
+      }
+
+      return {
+        ...currentFilters,
+        exchanges: Array.from(currentExchanges)
+      };
+    });
   }
 
   return (
@@ -112,6 +187,7 @@ function FilterControls({ filters, onChange }) {
           value={filters.minRawSpread}
           onChange={(event) => updateFilter("minRawSpread", event.target.value)}
           placeholder="0.10"
+          disabled={disabled}
         />
       </label>
       <label>
@@ -122,6 +198,7 @@ function FilterControls({ filters, onChange }) {
           value={filters.minNetSpread}
           onChange={(event) => updateFilter("minNetSpread", event.target.value)}
           placeholder="0.00"
+          disabled={disabled}
         />
       </label>
       <label>
@@ -133,8 +210,33 @@ function FilterControls({ filters, onChange }) {
           value={filters.minVolume24hUsd}
           onChange={(event) => updateFilter("minVolume24hUsd", event.target.value)}
           placeholder="400000"
+          disabled={disabled}
         />
       </label>
+      <fieldset className="exchange-filter">
+        <legend>Exchanges</legend>
+        <div className="exchange-options">
+          {supportedExchanges.map((exchange) => (
+            <label key={exchange} className="exchange-option">
+              <input
+                type="checkbox"
+                checked={filters.exchanges.includes(exchange)}
+                onChange={() => toggleExchange(exchange)}
+                disabled={disabled}
+              />
+              <span>{exchange}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="filter-actions">
+        <button type="button" onClick={onApply} disabled={disabled}>
+          Apply filters
+        </button>
+        <button type="button" className="secondary-button" onClick={onReset} disabled={disabled}>
+          Reset filters
+        </button>
+      </div>
     </section>
   );
 }
@@ -143,7 +245,7 @@ function OpportunitiesTable({ opportunities, status }) {
   const emptyMessage =
     status === "loading"
       ? "Loading opportunities..."
-      : "No opportunities match the current filters.";
+      : "No opportunities match the applied filters.";
 
   return (
     <section className="table-section" aria-label="Arbitrage opportunities">
@@ -204,6 +306,37 @@ function OpportunitiesTable({ opportunities, status }) {
       </div>
     </section>
   );
+}
+
+function createEmptyFilters() {
+  return {
+    minRawSpread: "",
+    minNetSpread: "",
+    minVolume24hUsd: "",
+    exchanges: []
+  };
+}
+
+function toUiFilters(apiFilters = {}) {
+  return {
+    minRawSpread: toInputValue(apiFilters.min_raw_spread),
+    minNetSpread: toInputValue(apiFilters.min_net_spread),
+    minVolume24hUsd: toInputValue(apiFilters.min_volume_24h_usd),
+    exchanges: Array.isArray(apiFilters.exchanges) ? apiFilters.exchanges : []
+  };
+}
+
+function normalizeFilters(filters) {
+  return {
+    minRawSpread: filters.minRawSpread,
+    minNetSpread: filters.minNetSpread,
+    minVolume24hUsd: filters.minVolume24hUsd,
+    exchanges: Array.isArray(filters.exchanges) ? filters.exchanges : []
+  };
+}
+
+function toInputValue(value) {
+  return value === null || value === undefined ? "" : String(value);
 }
 
 export default App;

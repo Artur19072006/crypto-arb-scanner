@@ -93,6 +93,14 @@ Copy-Item config\config.example.yaml config\config.yaml
 
 Telegram settings are placeholders for now. Do not commit real bot tokens or chat IDs.
 
+The backend reads `config/config.yaml` when it exists. If it does not exist, it falls back to `config/config.example.yaml`, then to built-in safe defaults.
+
+Frontend-safe settings are exposed at:
+
+```text
+http://127.0.0.1:8000/api/settings
+```
+
 ## Development Notes
 
 - Spread logic must use bid/ask data, not last traded price.

@@ -51,3 +51,16 @@ class ScannerFilters(BaseModel):
     min_net_spread: float | None = None
     min_volume_24h_usd: float | None = Field(default=None, ge=0)
     exchanges: tuple[str, ...] = ()
+
+
+class TelegramDisplaySettings(BaseModel):
+    enabled: bool = False
+    alert_cooldown_seconds: int = Field(default=300, ge=0)
+
+
+class AppConfig(BaseModel):
+    fees: dict[str, ExchangeFees]
+    default_filters: ScannerFilters
+    supported_exchanges: tuple[str, ...]
+    telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
+    config_source: str
