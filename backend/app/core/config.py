@@ -11,6 +11,7 @@ from app.domain.models import (
     DataSourceMode,
     ExchangeFees,
     ScannerFilters,
+    SymbolSelectionConfig,
     TelegramDisplaySettings,
 )
 
@@ -60,6 +61,11 @@ def load_app_config(
     enabled_connectors = _load_enabled_connectors(raw_config, data_source_mode)
     max_symbols = _load_max_symbols(raw_config)
     symbol_allowlist = _load_symbol_allowlist(raw_config)
+    symbol_selection = _load_symbol_selection(
+        raw_config,
+        max_symbols=max_symbols,
+        default_min_volume_24h_usd=filters.min_volume_24h_usd,
+    )
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
@@ -67,6 +73,7 @@ def load_app_config(
         enabled_connectors=enabled_connectors,
         max_symbols=max_symbols,
         symbol_allowlist=symbol_allowlist,
+        symbol_selection=symbol_selection,
         fees=fees,
         default_filters=filters,
         supported_exchanges=supported_exchanges,
@@ -209,6 +216,41 @@ def _load_symbol_allowlist(raw_config: dict[str, Any]) -> tuple[str, ...]:
 
     symbols = _string_tuple(raw_value)
     return symbols or FALLBACK_SYMBOL_ALLOWLIST
+
+
+def _load_symbol_selection(
+    raw_config: dict[str, Any],
+    max_symbols: int,
+    default_min_volume_24h_usd: float | None,
+) -> SymbolSelectionConfig:
+    raw_value = raw_config.get("symbol_selection")
+    if raw_value is None:
+        raw_scanner = raw_config.get("scanner")
+        if isinstance(raw_scanner, dict):
+            raw_value = raw_scanner.get("symbol_selection")
+
+    if not isinstance(raw_value, dict):
+        return SymbolSelectionConfig(
+            mode="manual",
+            min_volume_24h_usd=default_min_volume_24h_usd,
+            max_symbols=max_symbols,
+        )
+
+    mode = str(raw_value.get("mode", "manual")).lower().strip()
+    if mode != "auto":
+        mode = "manual"
+
+    raw_max_symbols = raw_value.get("max_symbols", max_symbols)
+    return SymbolSelectionConfig(
+        mode=mode,
+        min_volume_24h_usd=_optional_float(
+            raw_value.get("min_volume_24h_usd", default_min_volume_24h_usd)
+        ),
+        max_volume_24h_usd=_optional_float(raw_value.get("max_volume_24h_usd")),
+        max_symbols=max(1, int(raw_max_symbols or max_symbols)),
+        include_symbols=_string_tuple(raw_value.get("include_symbols")),
+        exclude_symbols=_string_tuple(raw_value.get("exclude_symbols")),
+    )
 
 
 def _supported_exchanges(

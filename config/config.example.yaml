@@ -7,10 +7,21 @@ enabled_connectors:
 #   - binance
 #   - bybit
 max_symbols: 3
+# Optional manual override when symbol_selection.mode is manual.
 symbol_allowlist:
   - BTCUSDT
   - ETHUSDT
   - SOLUSDT
+
+symbol_selection:
+  mode: auto
+  min_volume_24h_usd: 400000
+  max_volume_24h_usd: 50000000
+  max_symbols: 100
+  include_symbols: []
+  exclude_symbols:
+    - BTCUSDT
+    - ETHUSDT
 
 fees:
   Binance:

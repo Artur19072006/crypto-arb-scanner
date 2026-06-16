@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.connectors.base import ExchangeConnector
-from app.domain.models import MarketSnapshot
+from app.domain.models import MarketSnapshot, MarketSymbol
 from app.services.symbols import normalize_symbol
 
 
@@ -29,9 +29,16 @@ class BybitPublicConnector(ExchangeConnector):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
-    async def fetch_snapshots(self) -> list[MarketSnapshot]:
-        symbols = await self.fetch_symbols()
-        if not symbols:
+    async def fetch_snapshots(
+        self,
+        symbols: tuple[str, ...] | None = None,
+    ) -> list[MarketSnapshot]:
+        selected_symbols = (
+            _normalize_symbol_tuple(symbols, "Bybit")
+            if symbols is not None
+            else tuple(await self.fetch_symbols())
+        )
+        if not selected_symbols:
             return []
 
         tickers_response = await self._get_json(
@@ -41,7 +48,7 @@ class BybitPublicConnector(ExchangeConnector):
         tickers = self._ticker_map(tickers_response)
 
         snapshots: list[MarketSnapshot] = []
-        for symbol in symbols:
+        for symbol in selected_symbols:
             ticker = tickers.get(symbol)
             if not ticker:
                 continue
@@ -58,13 +65,42 @@ class BybitPublicConnector(ExchangeConnector):
             except (KeyError, TypeError, ValueError):
                 continue
 
-        if symbols and not snapshots:
+        if selected_symbols and not snapshots:
             raise RuntimeError("No Bybit snapshots could be parsed")
 
         return snapshots
 
     async def fetch_symbols(self) -> list[str]:
         allowlist = set(self.symbol_allowlist)
+        symbols = await self._fetch_instrument_symbols(
+            allowlist=allowlist,
+            max_symbols=self.max_symbols,
+        )
+        return symbols
+
+    async def fetch_symbol_markets(self) -> list[MarketSymbol]:
+        symbols = await self._fetch_instrument_symbols()
+        tickers_response = await self._get_json(
+            "/v5/market/tickers",
+            {"category": "linear"},
+        )
+        tickers = self._ticker_map(tickers_response)
+
+        return [
+            MarketSymbol(
+                exchange="Bybit",
+                symbol=symbol,
+                volume_24h_usd=_float_or_zero(tickers.get(symbol, {}).get("turnover24h")),
+            )
+            for symbol in symbols
+        ]
+
+    async def _fetch_instrument_symbols(
+        self,
+        allowlist: set[str] | None = None,
+        max_symbols: int | None = None,
+    ) -> list[str]:
+        allowed_symbols = allowlist or set()
         symbols: list[str] = []
         cursor = ""
 
@@ -86,11 +122,11 @@ class BybitPublicConnector(ExchangeConnector):
                 symbol = normalize_symbol(str(raw_symbol.get("symbol", "")), "Bybit")
                 if not symbol:
                     continue
-                if allowlist and symbol not in allowlist:
+                if allowed_symbols and symbol not in allowed_symbols:
                     continue
 
                 symbols.append(symbol)
-                if len(symbols) >= self.max_symbols:
+                if max_symbols is not None and len(symbols) >= max_symbols:
                     return symbols
 
             cursor = str(result.get("nextPageCursor") or "")
@@ -170,6 +206,19 @@ def _datetime_from_millis(value: object) -> datetime | None:
         return None
 
     return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+
+
+def _normalize_symbol_tuple(
+    symbols: tuple[str, ...],
+    exchange: str,
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            symbol
+            for symbol in (normalize_symbol(raw_symbol, exchange) for raw_symbol in symbols)
+            if symbol
+        )
+    )
 
 
 def _float_or_zero(value: object) -> float:

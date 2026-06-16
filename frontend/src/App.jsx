@@ -158,6 +158,14 @@ function App() {
           <strong>{formatModeLabel(scannerStatus?.mode)}</strong>
         </div>
         <div>
+          <span className="metric-label">Symbol mode</span>
+          <strong>{formatSymbolSelectionMode(scannerStatus?.symbol_selection_mode)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Selected symbols</span>
+          <strong>{scannerStatus?.selected_symbol_count ?? "-"}</strong>
+        </div>
+        <div>
           <span className="metric-label">Snapshots</span>
           <strong>{scannerStatus?.snapshot_count ?? "-"}</strong>
         </div>
@@ -178,6 +186,13 @@ function App() {
           <strong>{formatConnectors(scannerStatus?.active_connectors)}</strong>
         </div>
       </section>
+
+      {Array.isArray(scannerStatus?.selected_symbols) && scannerStatus.selected_symbols.length > 0 && (
+        <section className="symbol-preview" aria-label="Selected symbols preview">
+          <span className="metric-label">Preview</span>
+          <strong>{formatSymbolsPreview(scannerStatus.selected_symbols)}</strong>
+        </section>
+      )}
 
       <FilterControls
         filters={draftFilters}
@@ -471,6 +486,25 @@ function formatModeLabel(mode) {
   }
 
   return "-";
+}
+
+function formatSymbolSelectionMode(mode) {
+  if (mode === "auto") {
+    return "Auto";
+  }
+  if (mode === "manual") {
+    return "Manual";
+  }
+
+  return "-";
+}
+
+function formatSymbolsPreview(symbols) {
+  if (!Array.isArray(symbols) || !symbols.length) {
+    return "-";
+  }
+
+  return symbols.join(", ");
 }
 
 const CONNECTOR_EXCHANGE_NAMES = {

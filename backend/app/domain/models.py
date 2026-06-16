@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 LiquidityStatus = Literal["OK", "Thin", "Holey"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
+SymbolSelectionMode = Literal["manual", "auto"]
 
 
 class MarketSnapshot(BaseModel):
@@ -20,6 +21,12 @@ class MarketSnapshot(BaseModel):
     funding_rate_percent: float
     next_funding_time: datetime | None
     timestamp: datetime
+
+
+class MarketSymbol(BaseModel):
+    exchange: str
+    symbol: str
+    volume_24h_usd: float = Field(ge=0)
 
 
 class ExchangeFees(BaseModel):
@@ -59,11 +66,31 @@ class TelegramDisplaySettings(BaseModel):
     alert_cooldown_seconds: int = Field(default=300, ge=0)
 
 
+class SymbolSelectionConfig(BaseModel):
+    mode: SymbolSelectionMode = "manual"
+    min_volume_24h_usd: float | None = Field(default=None, ge=0)
+    max_volume_24h_usd: float | None = Field(default=None, ge=0)
+    max_symbols: int = Field(default=10, ge=1)
+    include_symbols: tuple[str, ...] = ()
+    exclude_symbols: tuple[str, ...] = ()
+
+
+class SymbolUniverseSelection(BaseModel):
+    mode: SymbolSelectionMode = "manual"
+    symbols: tuple[str, ...] = ()
+    min_volume_24h_usd: float | None = None
+    max_volume_24h_usd: float | None = None
+    errors: tuple[str, ...] = ()
+
+
 class AppConfig(BaseModel):
     data_source_mode: DataSourceMode = "mock"
     enabled_connectors: tuple[str, ...] = ("fake",)
     max_symbols: int = Field(default=10, ge=1)
     symbol_allowlist: tuple[str, ...] = ()
+    symbol_selection: SymbolSelectionConfig = Field(
+        default_factory=SymbolSelectionConfig
+    )
     fees: dict[str, ExchangeFees]
     default_filters: ScannerFilters
     supported_exchanges: tuple[str, ...]
@@ -84,3 +111,8 @@ class ScannerStatus(BaseModel):
     stored_opportunity_count: int = Field(ge=0)
     enabled_exchanges: tuple[str, ...]
     active_connectors: tuple[str, ...]
+    symbol_selection_mode: SymbolSelectionMode
+    selected_symbol_count: int = Field(ge=0)
+    selected_symbols: tuple[str, ...] = ()
+    symbol_selection_min_volume_24h_usd: float | None = None
+    symbol_selection_max_volume_24h_usd: float | None = None

@@ -26,6 +26,19 @@ class BybitPublicConnectorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT"])
 
+    async def test_fetch_symbol_markets_maps_usdt_linear_perpetual_volume(self) -> None:
+        connector = MockBybitPublicConnector({
+            "/v5/market/instruments-info": _instruments_response(),
+            "/v5/market/tickers": _tickers_response(),
+        })
+
+        markets = await connector.fetch_symbol_markets()
+
+        self.assertEqual(
+            [(market.symbol, market.volume_24h_usd) for market in markets],
+            [("BTCUSDT", 123_456_789.10), ("ETHUSDT", 98_765_432.10)],
+        )
+
     async def test_fetch_snapshots_maps_public_responses_to_market_snapshots(self) -> None:
         connector = MockBybitPublicConnector({
             "/v5/market/instruments-info": _instruments_response(),

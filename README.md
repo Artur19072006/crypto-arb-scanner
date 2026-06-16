@@ -123,7 +123,7 @@ Private/account endpoints, API keys, order execution, and automatic trading are 
 
 ## Binance + Bybit Public Live Mode
 
-To test Binance and Bybit public market data, edit `config/config.yaml`:
+To test Binance and Bybit public market data with the manual allowlist, edit `config/config.yaml`:
 
 ```yaml
 data_source_mode: live
@@ -135,6 +135,26 @@ symbol_allowlist:
   - BTCUSDT
   - ETHUSDT
   - SOLUSDT
+symbol_selection:
+  mode: manual
+```
+
+To let the scanner build the Binance/Bybit symbol universe automatically:
+
+```yaml
+data_source_mode: live
+enabled_connectors:
+  - binance
+  - bybit
+symbol_selection:
+  mode: auto
+  min_volume_24h_usd: 400000
+  max_volume_24h_usd: 50000000
+  max_symbols: 100
+  include_symbols: []
+  exclude_symbols:
+    - BTCUSDT
+    - ETHUSDT
 ```
 
 Restart the backend after changing config. Live mode uses public REST market data only.

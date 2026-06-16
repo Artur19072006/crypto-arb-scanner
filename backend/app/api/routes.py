@@ -10,7 +10,12 @@ from app.domain.models import (
     ScannerStatus,
 )
 from app.services.live_scanner import active_connector_names, active_data_sources
-from app.services.runtime import market_data_cache, opportunity_store
+from app.services.runtime import (
+    market_data_cache,
+    opportunity_store,
+    symbol_universe_builder,
+)
+from app.services.symbols import normalize_symbol
 from app.services.spread_engine import filter_opportunities
 
 router = APIRouter()
@@ -32,6 +37,8 @@ async def get_scanner_status() -> ScannerStatus:
     data_sources = active_data_sources()
     last_error = await opportunity_store.get_last_error()
     stored_opportunity_count = await opportunity_store.opportunity_count()
+    symbol_selection = await symbol_universe_builder.get_last_selection()
+    selected_symbols = _status_symbols(config, symbol_selection.symbols)
     return ScannerStatus(
         data_source=", ".join(data_sources) if data_sources else "none",
         data_source_mode=config.data_source_mode,
@@ -45,6 +52,15 @@ async def get_scanner_status() -> ScannerStatus:
         stored_opportunity_count=stored_opportunity_count,
         enabled_exchanges=config.default_filters.exchanges,
         active_connectors=active_connector_names(),
+        symbol_selection_mode=config.symbol_selection.mode,
+        selected_symbol_count=len(selected_symbols),
+        selected_symbols=selected_symbols[:20],
+        symbol_selection_min_volume_24h_usd=(
+            config.symbol_selection.min_volume_24h_usd
+        ),
+        symbol_selection_max_volume_24h_usd=(
+            config.symbol_selection.max_volume_24h_usd
+        ),
     )
 
 
@@ -55,13 +71,52 @@ async def list_opportunities(
     min_volume_24h_usd: Annotated[str | None, Query()] = None,
     exchanges: Annotated[list[str] | None, Query()] = None,
 ) -> list[ArbitrageOpportunity]:
+    config = get_app_config()
     opportunities = await opportunity_store.get_all_opportunities()
+    if config.data_source_mode == "live":
+        opportunities = await _filter_live_selected_symbols(opportunities)
+
     return filter_opportunities(opportunities, _build_filters(
         min_raw_spread=min_raw_spread,
         min_net_spread=min_net_spread,
         min_volume_24h_usd=min_volume_24h_usd,
         exchanges=exchanges,
     ))
+
+
+async def _filter_live_selected_symbols(
+    opportunities: list[ArbitrageOpportunity],
+) -> list[ArbitrageOpportunity]:
+    selection = await symbol_universe_builder.get_last_selection()
+    allowed_symbols = set(selection.symbols)
+    if not allowed_symbols:
+        return []
+
+    return [
+        opportunity
+        for opportunity in opportunities
+        if normalize_symbol(opportunity.symbol) in allowed_symbols
+    ]
+
+
+def _status_symbols(
+    config: AppConfig,
+    selected_symbols: tuple[str, ...],
+) -> tuple[str, ...]:
+    if selected_symbols:
+        return selected_symbols
+    if config.data_source_mode == "mock" or config.symbol_selection.mode == "manual":
+        return tuple(
+            dict.fromkeys(
+                symbol
+                for symbol in (
+                    normalize_symbol(raw_symbol)
+                    for raw_symbol in config.symbol_allowlist[:config.max_symbols]
+                )
+                if symbol
+            )
+        )
+    return ()
 
 
 def _build_filters(

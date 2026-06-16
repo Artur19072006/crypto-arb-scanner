@@ -8,7 +8,10 @@ class FakeExchangeConnector(ExchangeConnector):
     name = "fake"
     data_source = "fake_connector"
 
-    async def fetch_snapshots(self) -> list[MarketSnapshot]:
+    async def fetch_snapshots(
+        self,
+        symbols: tuple[str, ...] | None = None,
+    ) -> list[MarketSnapshot]:
         now = datetime.now(timezone.utc)
         next_funding = now + timedelta(hours=4)
 

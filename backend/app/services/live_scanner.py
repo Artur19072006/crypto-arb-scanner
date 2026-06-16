@@ -7,7 +7,11 @@ from app.core.config import get_app_config
 from app.domain.models import ScannerFilters
 from app.services.market_data_cache import MarketDataCache
 from app.services.opportunity_store import OpportunityStore
-from app.services.runtime import market_data_cache, opportunity_store
+from app.services.runtime import (
+    market_data_cache,
+    opportunity_store,
+    symbol_universe_builder,
+)
 from app.services.spread_engine import calculate_opportunities
 
 
@@ -30,22 +34,39 @@ async def refresh_mock_scanner_once(
         await store.set_error("No active market data connectors")
         return
 
+    selected_symbols: tuple[str, ...] | None = None
+    selection = await symbol_universe_builder.build(config, active_registry)
+    errors: list[str] = list(selection.errors)
+    if config.data_source_mode == "live":
+        selected_symbols = selection.symbols
+        if not selected_symbols and not errors:
+            errors.append("No symbols selected for live scanning")
+
     snapshots = []
-    errors: list[str] = []
     for connector in connectors:
         try:
-            snapshots.extend(await connector.fetch_snapshots())
+            snapshots.extend(await connector.fetch_snapshots(selected_symbols))
         except Exception as exc:
             errors.append(f"{connector.name}: {exc}")
 
     if errors:
         await store.set_error("; ".join(errors))
         if not snapshots:
+            if config.data_source_mode == "live":
+                await store.update_opportunities([])
             return
 
     await cache.update_snapshots(snapshots)
 
     cached_snapshots = await cache.get_all_snapshots()
+    if config.data_source_mode == "live" and selected_symbols is not None:
+        allowed_symbols = set(selected_symbols)
+        cached_snapshots = [
+            snapshot
+            for snapshot in cached_snapshots
+            if snapshot.symbol in allowed_symbols
+        ]
+
     enabled_exchange_filter = ScannerFilters(exchanges=config.default_filters.exchanges)
     opportunities = calculate_opportunities(
         cached_snapshots,

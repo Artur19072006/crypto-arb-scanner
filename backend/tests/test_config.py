@@ -51,6 +51,9 @@ fees:
         self.assertEqual(config.default_filters.exchanges, ("Binance",))
         self.assertEqual(config.data_source_mode, "mock")
         self.assertEqual(config.enabled_connectors, ("fake",))
+        self.assertEqual(config.symbol_selection.mode, "manual")
+        self.assertEqual(config.symbol_selection.min_volume_24h_usd, 123456)
+        self.assertEqual(config.symbol_selection.max_symbols, 10)
         self.assertTrue(config.telegram.enabled)
         self.assertEqual(config.telegram.alert_cooldown_seconds, 45)
         self.assertFalse(hasattr(config.telegram, "bot_token"))
@@ -95,6 +98,8 @@ filters:
         self.assertEqual(config.enabled_connectors, ("fake",))
         self.assertEqual(config.max_symbols, 10)
         self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
+        self.assertEqual(config.symbol_selection.mode, "manual")
+        self.assertEqual(config.symbol_selection.max_symbols, 10)
         self.assertEqual(config.default_filters.min_raw_spread, 0.10)
         self.assertEqual(config.default_filters.min_volume_24h_usd, 400_000)
 
@@ -124,6 +129,46 @@ symbol_allowlist:
         self.assertEqual(config.enabled_connectors, ("binance",))
         self.assertEqual(config.max_symbols, 2)
         self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT"))
+        self.assertEqual(config.symbol_selection.mode, "manual")
+
+    def test_loads_symbol_selection_auto_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+data_source_mode: live
+enabled_connectors:
+  - binance
+  - bybit
+max_symbols: 3
+symbol_allowlist:
+  - BTCUSDT
+symbol_selection:
+  mode: auto
+  min_volume_24h_usd: 400000
+  max_volume_24h_usd: 50000000
+  max_symbols: 100
+  include_symbols:
+    - SOLUSDT
+  exclude_symbols:
+    - BTCUSDT
+    - ETHUSDT
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertEqual(config.symbol_selection.mode, "auto")
+        self.assertEqual(config.symbol_selection.min_volume_24h_usd, 400_000)
+        self.assertEqual(config.symbol_selection.max_volume_24h_usd, 50_000_000)
+        self.assertEqual(config.symbol_selection.max_symbols, 100)
+        self.assertEqual(config.symbol_selection.include_symbols, ("SOLUSDT",))
+        self.assertEqual(config.symbol_selection.exclude_symbols, ("BTCUSDT", "ETHUSDT"))
 
     def test_live_data_source_mode_defaults_to_public_connectors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
