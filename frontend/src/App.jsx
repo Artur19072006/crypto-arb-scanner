@@ -618,7 +618,8 @@ function formatSymbolsPreview(symbols) {
 
 const CONNECTOR_EXCHANGE_NAMES = {
   binance: "Binance",
-  bybit: "Bybit"
+  bybit: "Bybit",
+  okx: "OKX"
 };
 
 const SORT_BY_OPTIONS = new Set([

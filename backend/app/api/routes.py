@@ -64,6 +64,8 @@ async def get_scanner_status() -> ScannerStatus:
         symbol_selection_max_volume_24h_usd=(
             config.symbol_selection.max_volume_24h_usd
         ),
+        symbols_on_2_exchanges=symbol_selection.symbols_on_2_exchanges,
+        symbols_on_3_exchanges=symbol_selection.symbols_on_3_exchanges,
     )
 
 

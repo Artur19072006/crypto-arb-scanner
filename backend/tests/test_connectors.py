@@ -56,6 +56,30 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry.get("binance").data_source, "binance_public_rest")
         self.assertEqual(registry.get("bybit").data_source, "bybit_public_rest")
 
+    async def test_live_mode_registers_okx_public_connector(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("okx",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("okx",))
+        self.assertEqual(registry.get("okx").data_source, "okx_public_rest")
+
+    async def test_live_mode_registers_binance_bybit_and_okx_public_connectors(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("binance", "bybit", "okx"),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("binance", "bybit", "okx"))
+        self.assertEqual(registry.get("binance").data_source, "binance_public_rest")
+        self.assertEqual(registry.get("bybit").data_source, "bybit_public_rest")
+        self.assertEqual(registry.get("okx").data_source, "okx_public_rest")
+
     async def test_live_mode_registers_bybit_public_connector(self) -> None:
         registry = build_connector_registry(
             data_source_mode="live",

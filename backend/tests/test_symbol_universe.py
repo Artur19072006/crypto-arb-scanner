@@ -50,6 +50,32 @@ class SymbolUniverseBuilderTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(selection.symbols, ("ETHUSDT", "SOLUSDT"))
 
+    async def test_auto_selects_symbols_on_at_least_two_of_three_connectors(self) -> None:
+        selection = await _build_selection(
+            binance_markets=[
+                _market("Binance", "BTCUSDT", 5_000_000),
+                _market("Binance", "SOLUSDT", 1_000_000),
+            ],
+            bybit_markets=[
+                _market("Bybit", "BTCUSDT", 4_000_000),
+                _market("Bybit", "ETHUSDT", 3_000_000),
+            ],
+            okx_markets=[
+                _market("OKX", "BTCUSDT", 6_000_000),
+                _market("OKX", "ETHUSDT", 2_000_000),
+                _market("OKX", "SOLUSDT", 900_000),
+                _market("OKX", "DOGEUSDT", 10_000_000),
+            ],
+            config=_config(min_volume_24h_usd=0),
+        )
+
+        self.assertEqual(selection.symbols, ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
+        self.assertEqual(selection.symbols_on_2_exchanges, 2)
+        self.assertEqual(selection.symbols_on_3_exchanges, 1)
+        self.assertEqual(selection.symbols_by_connector["binance"], ("BTCUSDT", "SOLUSDT"))
+        self.assertEqual(selection.symbols_by_connector["bybit"], ("BTCUSDT", "ETHUSDT"))
+        self.assertEqual(selection.symbols_by_connector["okx"], ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
+
     async def test_auto_applies_min_and_max_volume_filters(self) -> None:
         selection = await _build_selection(
             binance_markets=[
@@ -155,10 +181,13 @@ async def _build_selection(
     binance_markets: list[MarketSymbol],
     bybit_markets: list[MarketSymbol],
     config: AppConfig,
+    okx_markets: list[MarketSymbol] | None = None,
 ):
     registry = ConnectorRegistry()
     registry.register(StaticSymbolConnector("binance", "Binance", binance_markets))
     registry.register(StaticSymbolConnector("bybit", "Bybit", bybit_markets))
+    if okx_markets is not None:
+        registry.register(StaticSymbolConnector("okx", "OKX", okx_markets))
     builder = SymbolUniverseBuilder()
     return await builder.build(config, registry)
 
@@ -169,6 +198,7 @@ def _config(
     min_volume_24h_usd: float | None = 400_000,
     max_volume_24h_usd: float | None = None,
     max_symbols: int = 100,
+    min_exchanges_required: int = 2,
     include_symbols: tuple[str, ...] = (),
     exclude_symbols: tuple[str, ...] = (),
     allowlist: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "SOLUSDT"),
@@ -184,15 +214,17 @@ def _config(
             min_volume_24h_usd=min_volume_24h_usd,
             max_volume_24h_usd=max_volume_24h_usd,
             max_symbols=max_symbols,
+            min_exchanges_required=min_exchanges_required,
             include_symbols=include_symbols,
             exclude_symbols=exclude_symbols,
         ),
         fees={
             "Binance": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
             "Bybit": ExchangeFees(maker_percent=0.02, taker_percent=0.055),
+            "OKX": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
         },
-        default_filters=ScannerFilters(exchanges=("Binance", "Bybit")),
-        supported_exchanges=("Binance", "Bybit"),
+        default_filters=ScannerFilters(exchanges=("Binance", "Bybit", "OKX")),
+        supported_exchanges=("Binance", "Bybit", "OKX"),
         telegram=TelegramDisplaySettings(),
         config_source="test",
     )

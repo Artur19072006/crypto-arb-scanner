@@ -6,6 +6,7 @@ enabled_connectors:
 # enabled_connectors:
 #   - binance
 #   - bybit
+#   - okx
 max_symbols: 3
 # Optional manual override when symbol_selection.mode is manual.
 symbol_allowlist:
@@ -18,6 +19,7 @@ symbol_selection:
   min_volume_24h_usd: 400000
   max_volume_24h_usd: 50000000
   max_symbols: 100
+  min_exchanges_required: 2
   include_symbols: []
   exclude_symbols:
     - BTCUSDT

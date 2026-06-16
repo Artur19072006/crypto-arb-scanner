@@ -24,6 +24,8 @@ class SymbolNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_symbol(examples["Bybit"]), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["OKX"]), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["Gate"]), "BTCUSDT")
+        self.assertEqual(normalize_symbol("BTC-USDT-SWAP", "OKX"), "BTCUSDT")
+        self.assertEqual(normalize_symbol("ETH-USDT-SWAP", "OKX"), "ETHUSDT")
 
     def test_supported_symbols_are_limited_to_current_mock_set(self) -> None:
         self.assertEqual(SUPPORTED_NORMALIZED_SYMBOLS, ("BTCUSDT", "ETHUSDT", "SOLUSDT"))

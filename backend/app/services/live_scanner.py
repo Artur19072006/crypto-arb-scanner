@@ -49,8 +49,17 @@ async def refresh_mock_scanner_once(
 
     snapshots = []
     for connector in connectors:
+        connector_symbols = selected_symbols
+        if (
+            scan_config.data_source_mode == "live"
+            and selection.symbols_by_connector
+        ):
+            connector_symbols = selection.symbols_by_connector.get(connector.name, ())
+            if not connector_symbols:
+                continue
+
         try:
-            snapshots.extend(await connector.fetch_snapshots(selected_symbols))
+            snapshots.extend(await connector.fetch_snapshots(connector_symbols))
         except Exception as exc:
             errors.append(f"{connector.name}: {exc}")
 

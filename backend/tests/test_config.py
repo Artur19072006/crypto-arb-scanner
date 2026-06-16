@@ -54,6 +54,7 @@ fees:
         self.assertEqual(config.symbol_selection.mode, "manual")
         self.assertEqual(config.symbol_selection.min_volume_24h_usd, 123456)
         self.assertEqual(config.symbol_selection.max_symbols, 10)
+        self.assertEqual(config.symbol_selection.min_exchanges_required, 2)
         self.assertTrue(config.telegram.enabled)
         self.assertEqual(config.telegram.alert_cooldown_seconds, 45)
         self.assertFalse(hasattr(config.telegram, "bot_token"))
@@ -149,6 +150,7 @@ symbol_selection:
   min_volume_24h_usd: 400000
   max_volume_24h_usd: 50000000
   max_symbols: 100
+  min_exchanges_required: 3
   include_symbols:
     - SOLUSDT
   exclude_symbols:
@@ -167,6 +169,7 @@ symbol_selection:
         self.assertEqual(config.symbol_selection.min_volume_24h_usd, 400_000)
         self.assertEqual(config.symbol_selection.max_volume_24h_usd, 50_000_000)
         self.assertEqual(config.symbol_selection.max_symbols, 100)
+        self.assertEqual(config.symbol_selection.min_exchanges_required, 3)
         self.assertEqual(config.symbol_selection.include_symbols, ("SOLUSDT",))
         self.assertEqual(config.symbol_selection.exclude_symbols, ("BTCUSDT", "ETHUSDT"))
 

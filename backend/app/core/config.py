@@ -241,6 +241,7 @@ def _load_symbol_selection(
         mode = "manual"
 
     raw_max_symbols = raw_value.get("max_symbols", max_symbols)
+    raw_min_exchanges_required = raw_value.get("min_exchanges_required", 2)
     return SymbolSelectionConfig(
         mode=mode,
         min_volume_24h_usd=_optional_float(
@@ -248,6 +249,7 @@ def _load_symbol_selection(
         ),
         max_volume_24h_usd=_optional_float(raw_value.get("max_volume_24h_usd")),
         max_symbols=max(1, int(raw_max_symbols or max_symbols)),
+        min_exchanges_required=max(2, int(raw_min_exchanges_required or 2)),
         include_symbols=_string_tuple(raw_value.get("include_symbols")),
         exclude_symbols=_string_tuple(raw_value.get("exclude_symbols")),
     )

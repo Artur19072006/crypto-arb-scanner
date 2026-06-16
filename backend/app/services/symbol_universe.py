@@ -10,6 +10,8 @@ from app.services.symbols import normalize_symbol
 class _SymbolCandidate:
     symbol: str
     volume_24h_usd: float
+    connector_names: tuple[str, ...]
+    exchange_count: int
 
 
 class SymbolUniverseBuilder:
@@ -67,45 +69,51 @@ class SymbolUniverseBuilder:
     ) -> SymbolUniverseSelection:
         selection_config = config.symbol_selection
         errors: list[str] = []
-        binance_connector = registry.get("binance")
-        bybit_connector = registry.get("bybit")
-
-        if binance_connector is None:
-            errors.append("Binance connector is required for auto symbol selection")
-        if bybit_connector is None:
-            errors.append("Bybit connector is required for auto symbol selection")
-        if errors:
-            return self._auto_result(config, (), tuple(errors))
-
-        try:
-            binance_symbols, bybit_symbols = await asyncio.gather(
-                binance_connector.fetch_symbol_markets(),
-                bybit_connector.fetch_symbol_markets(),
-            )
-        except Exception as exc:
+        connectors = registry.list_connectors()
+        if not connectors:
             return self._auto_result(
                 config,
                 (),
-                (f"Auto symbol selection failed: {exc}",),
+                {},
+                ("No active connectors available for auto symbol selection",),
             )
 
-        binance_by_symbol = _market_map(binance_symbols, "Binance")
-        bybit_by_symbol = _market_map(bybit_symbols, "Bybit")
-        common_symbols = set(binance_by_symbol).intersection(bybit_by_symbol)
+        connector_results = await asyncio.gather(
+            *(connector.fetch_symbol_markets() for connector in connectors),
+            return_exceptions=True,
+        )
+        markets_by_connector: dict[str, list[MarketSymbol]] = {}
+        for connector, result in zip(connectors, connector_results):
+            if isinstance(result, Exception):
+                errors.append(f"{connector.name}: {result}")
+                continue
+            markets_by_connector[connector.name] = result
+
+        if len(markets_by_connector) < selection_config.min_exchanges_required:
+            errors.append(
+                "Not enough connector symbol lists for auto symbol selection"
+            )
+            return self._auto_result(config, (), errors=tuple(errors))
+
+        markets_by_symbol = _markets_by_symbol(markets_by_connector)
         excluded_symbols = set(_normalized_symbols(selection_config.exclude_symbols))
         included_symbols = _normalized_symbols(selection_config.include_symbols)
 
         candidates_by_symbol: dict[str, _SymbolCandidate] = {}
-        for symbol in common_symbols:
+        for symbol, connector_markets in markets_by_symbol.items():
             if symbol in excluded_symbols:
+                continue
+            if len(connector_markets) < selection_config.min_exchanges_required:
                 continue
 
             candidates_by_symbol[symbol] = _SymbolCandidate(
                 symbol=symbol,
                 volume_24h_usd=min(
-                    binance_by_symbol[symbol].volume_24h_usd,
-                    bybit_by_symbol[symbol].volume_24h_usd,
+                    market.volume_24h_usd
+                    for market in connector_markets.values()
                 ),
+                connector_names=tuple(sorted(connector_markets)),
+                exchange_count=len(connector_markets),
             )
 
         included_candidates = [
@@ -131,37 +139,92 @@ class SymbolUniverseBuilder:
             volume_filtered_candidates,
             selection_config.max_symbols,
         )
+        symbols_by_connector = _symbols_by_connector(
+            selected_symbols,
+            candidates_by_symbol,
+            markets_by_connector,
+        )
+        exchange_count_summary = _exchange_count_summary(
+            selected_symbols,
+            candidates_by_symbol,
+        )
         if not selected_symbols:
             errors.append(
-                "No common Binance/Bybit symbols matched symbol selection filters"
+                "No symbols matched auto selection filters on enough exchanges"
             )
 
-        return self._auto_result(config, selected_symbols, tuple(errors))
+        return self._auto_result(
+            config,
+            selected_symbols,
+            symbols_by_connector,
+            tuple(errors),
+            symbols_on_2_exchanges=exchange_count_summary.get(2, 0),
+            symbols_on_3_exchanges=exchange_count_summary.get(3, 0),
+        )
 
     def _auto_result(
         self,
         config: AppConfig,
         symbols: tuple[str, ...],
+        symbols_by_connector: dict[str, tuple[str, ...]] | None = None,
         errors: tuple[str, ...] = (),
+        symbols_on_2_exchanges: int = 0,
+        symbols_on_3_exchanges: int = 0,
     ) -> SymbolUniverseSelection:
         return SymbolUniverseSelection(
             mode="auto",
             symbols=symbols,
+            symbols_by_connector=symbols_by_connector or {},
             min_volume_24h_usd=config.symbol_selection.min_volume_24h_usd,
             max_volume_24h_usd=config.symbol_selection.max_volume_24h_usd,
+            symbols_on_2_exchanges=symbols_on_2_exchanges,
+            symbols_on_3_exchanges=symbols_on_3_exchanges,
             errors=errors,
         )
 
 
-def _market_map(
-    markets: list[MarketSymbol],
-    exchange: str,
-) -> dict[str, MarketSymbol]:
-    return {
-        normalize_symbol(market.symbol, exchange): market
-        for market in markets
-        if market.exchange == exchange and normalize_symbol(market.symbol, exchange)
+def _markets_by_symbol(
+    markets_by_connector: dict[str, list[MarketSymbol]],
+) -> dict[str, dict[str, MarketSymbol]]:
+    by_symbol: dict[str, dict[str, MarketSymbol]] = {}
+    for connector_name, markets in markets_by_connector.items():
+        for market in markets:
+            symbol = normalize_symbol(market.symbol, market.exchange)
+            if not symbol:
+                continue
+            by_symbol.setdefault(symbol, {})[connector_name] = market
+    return by_symbol
+
+
+def _symbols_by_connector(
+    selected_symbols: tuple[str, ...],
+    candidates_by_symbol: dict[str, _SymbolCandidate],
+    markets_by_connector: dict[str, list[MarketSymbol]],
+) -> dict[str, tuple[str, ...]]:
+    selected_by_connector: dict[str, list[str]] = {
+        connector_name: []
+        for connector_name in markets_by_connector
     }
+    for symbol in selected_symbols:
+        candidate = candidates_by_symbol[symbol]
+        for connector_name in candidate.connector_names:
+            selected_by_connector.setdefault(connector_name, []).append(symbol)
+
+    return {
+        connector_name: tuple(symbols)
+        for connector_name, symbols in selected_by_connector.items()
+    }
+
+
+def _exchange_count_summary(
+    selected_symbols: tuple[str, ...],
+    candidates_by_symbol: dict[str, _SymbolCandidate],
+) -> dict[int, int]:
+    summary: dict[int, int] = {}
+    for symbol in selected_symbols:
+        exchange_count = candidates_by_symbol[symbol].exchange_count
+        summary[exchange_count] = summary.get(exchange_count, 0) + 1
+    return summary
 
 
 def _passes_volume_filters(

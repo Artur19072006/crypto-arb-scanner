@@ -90,6 +90,7 @@ class SymbolSelectionConfig(BaseModel):
     min_volume_24h_usd: float | None = Field(default=None, ge=0)
     max_volume_24h_usd: float | None = Field(default=None, ge=0)
     max_symbols: int = Field(default=10, ge=1)
+    min_exchanges_required: int = Field(default=2, ge=2)
     include_symbols: tuple[str, ...] = ()
     exclude_symbols: tuple[str, ...] = ()
 
@@ -97,8 +98,11 @@ class SymbolSelectionConfig(BaseModel):
 class SymbolUniverseSelection(BaseModel):
     mode: SymbolSelectionMode = "manual"
     symbols: tuple[str, ...] = ()
+    symbols_by_connector: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     min_volume_24h_usd: float | None = None
     max_volume_24h_usd: float | None = None
+    symbols_on_2_exchanges: int = Field(default=0, ge=0)
+    symbols_on_3_exchanges: int = Field(default=0, ge=0)
     errors: tuple[str, ...] = ()
 
 
@@ -135,3 +139,5 @@ class ScannerStatus(BaseModel):
     selected_symbols: tuple[str, ...] = ()
     symbol_selection_min_volume_24h_usd: float | None = None
     symbol_selection_max_volume_24h_usd: float | None = None
+    symbols_on_2_exchanges: int = Field(default=0, ge=0)
+    symbols_on_3_exchanges: int = Field(default=0, ge=0)

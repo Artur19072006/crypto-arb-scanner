@@ -2,6 +2,7 @@ from app.connectors.base import ExchangeConnector
 from app.connectors.binance import BinancePublicConnector
 from app.connectors.bybit import BybitPublicConnector
 from app.connectors.fake import FakeExchangeConnector
+from app.connectors.okx import OKXPublicConnector
 from app.domain.models import AppConfig
 
 
@@ -54,7 +55,15 @@ def build_connector_registry(
             )
         )
 
-    # TODO: Register OKX, Bitget, Gate, and KuCoin public connectors here later.
+    if data_source_mode == "live" and (not enabled or "okx" in enabled):
+        registry.register(
+            OKXPublicConnector(
+                symbol_allowlist=symbol_allowlist,
+                max_symbols=max_symbols,
+            )
+        )
+
+    # TODO: Register Bitget, Gate, and KuCoin public connectors here later.
     return registry
 
 
