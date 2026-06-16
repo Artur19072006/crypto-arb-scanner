@@ -25,6 +25,7 @@ FALLBACK_FILTERS = ScannerFilters(
     min_volume_24h_usd=400_000,
     exchanges=("Binance", "Bybit", "OKX", "Bitget"),
 )
+FALLBACK_SYMBOL_ALLOWLIST = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
 
 
 class Settings(BaseModel):
@@ -56,10 +57,16 @@ def load_app_config(
     filters = _load_filters(raw_config.get("filters"))
     telegram = _load_telegram_settings(raw_config.get("telegram"))
     data_source_mode = _load_data_source_mode(raw_config)
+    enabled_connectors = _load_enabled_connectors(raw_config, data_source_mode)
+    max_symbols = _load_max_symbols(raw_config)
+    symbol_allowlist = _load_symbol_allowlist(raw_config)
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
         data_source_mode=data_source_mode,
+        enabled_connectors=enabled_connectors,
+        max_symbols=max_symbols,
+        symbol_allowlist=symbol_allowlist,
         fees=fees,
         default_filters=filters,
         supported_exchanges=supported_exchanges,
@@ -159,6 +166,49 @@ def _load_data_source_mode(raw_config: dict[str, Any]) -> DataSourceMode:
     if mode == "live":
         return "live"
     return "mock"
+
+
+def _load_enabled_connectors(
+    raw_config: dict[str, Any],
+    data_source_mode: DataSourceMode,
+) -> tuple[str, ...]:
+    raw_value = raw_config.get("enabled_connectors")
+    if raw_value is None:
+        raw_scanner = raw_config.get("scanner")
+        if isinstance(raw_scanner, dict):
+            raw_value = raw_scanner.get("enabled_connectors")
+
+    if isinstance(raw_value, (list, tuple)):
+        connectors = tuple(
+            str(connector).lower().strip()
+            for connector in raw_value
+            if str(connector).strip()
+        )
+        if connectors:
+            return connectors
+
+    return ("fake",) if data_source_mode == "mock" else ("binance",)
+
+
+def _load_max_symbols(raw_config: dict[str, Any]) -> int:
+    raw_value = raw_config.get("max_symbols")
+    if raw_value is None:
+        raw_scanner = raw_config.get("scanner")
+        if isinstance(raw_scanner, dict):
+            raw_value = raw_scanner.get("max_symbols")
+
+    return max(1, int(raw_value or 10))
+
+
+def _load_symbol_allowlist(raw_config: dict[str, Any]) -> tuple[str, ...]:
+    raw_value = raw_config.get("symbol_allowlist")
+    if raw_value is None:
+        raw_scanner = raw_config.get("scanner")
+        if isinstance(raw_scanner, dict):
+            raw_value = raw_scanner.get("symbol_allowlist")
+
+    symbols = _string_tuple(raw_value)
+    return symbols or FALLBACK_SYMBOL_ALLOWLIST
 
 
 def _supported_exchanges(

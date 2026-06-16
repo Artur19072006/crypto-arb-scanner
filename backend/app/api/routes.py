@@ -9,11 +9,7 @@ from app.domain.models import (
     ScannerFilters,
     ScannerStatus,
 )
-from app.services.live_scanner import (
-    SCANNER_MODE,
-    active_connector_names,
-    active_data_sources,
-)
+from app.services.live_scanner import active_connector_names, active_data_sources
 from app.services.runtime import market_data_cache, opportunity_store
 from app.services.spread_engine import filter_opportunities
 
@@ -34,10 +30,13 @@ async def get_public_settings() -> AppConfig:
 async def get_scanner_status() -> ScannerStatus:
     config = get_app_config()
     data_sources = active_data_sources()
+    last_error = await opportunity_store.get_last_error()
     return ScannerStatus(
         data_source=", ".join(data_sources) if data_sources else "none",
         data_source_mode=config.data_source_mode,
-        mode=SCANNER_MODE,
+        mode=config.data_source_mode,
+        scanner_health="degraded" if last_error else "ok",
+        last_error=last_error,
         last_updated=await opportunity_store.get_last_updated(),
         snapshot_count=await market_data_cache.snapshot_count(),
         opportunity_count=await opportunity_store.opportunity_count(),

@@ -1,4 +1,11 @@
 data_source_mode: mock
+enabled_connectors:
+  - fake
+max_symbols: 3
+symbol_allowlist:
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
 
 fees:
   Binance:

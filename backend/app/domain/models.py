@@ -61,6 +61,9 @@ class TelegramDisplaySettings(BaseModel):
 
 class AppConfig(BaseModel):
     data_source_mode: DataSourceMode = "mock"
+    enabled_connectors: tuple[str, ...] = ("fake",)
+    max_symbols: int = Field(default=10, ge=1)
+    symbol_allowlist: tuple[str, ...] = ()
     fees: dict[str, ExchangeFees]
     default_filters: ScannerFilters
     supported_exchanges: tuple[str, ...]
@@ -71,7 +74,9 @@ class AppConfig(BaseModel):
 class ScannerStatus(BaseModel):
     data_source: str
     data_source_mode: DataSourceMode
-    mode: Literal["mock"]
+    mode: DataSourceMode
+    scanner_health: Literal["ok", "degraded"]
+    last_error: str | None
     last_updated: datetime | None
     snapshot_count: int = Field(ge=0)
     opportunity_count: int = Field(ge=0)

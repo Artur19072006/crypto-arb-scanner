@@ -1,5 +1,7 @@
 from app.connectors.base import ExchangeConnector
+from app.connectors.binance import BinancePublicConnector
 from app.connectors.fake import FakeExchangeConnector
+from app.domain.models import AppConfig
 
 
 class ConnectorRegistry:
@@ -22,12 +24,35 @@ class ConnectorRegistry:
         return tuple(connector.name for connector in self.list_connectors())
 
 
-def build_connector_registry(data_source_mode: str = "mock") -> ConnectorRegistry:
+def build_connector_registry(
+    data_source_mode: str = "mock",
+    enabled_connectors: tuple[str, ...] = (),
+    symbol_allowlist: tuple[str, ...] = (),
+    max_symbols: int = 10,
+) -> ConnectorRegistry:
     registry = ConnectorRegistry()
+    enabled = set(enabled_connectors)
 
     if data_source_mode == "mock":
         registry.register(FakeExchangeConnector())
+        return registry
 
-    # TODO: Register BinanceConnector, BybitConnector, and later connectors here
-    # when real market-data integrations are implemented.
+    if data_source_mode == "live" and (not enabled or "binance" in enabled):
+        registry.register(
+            BinancePublicConnector(
+                symbol_allowlist=symbol_allowlist,
+                max_symbols=max_symbols,
+            )
+        )
+
+    # TODO: Register BybitConnector and later connectors here when they are implemented.
     return registry
+
+
+def build_connector_registry_from_config(config: AppConfig) -> ConnectorRegistry:
+    return build_connector_registry(
+        data_source_mode=config.data_source_mode,
+        enabled_connectors=config.enabled_connectors,
+        symbol_allowlist=config.symbol_allowlist,
+        max_symbols=config.max_symbols,
+    )

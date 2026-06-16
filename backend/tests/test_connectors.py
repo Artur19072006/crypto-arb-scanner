@@ -23,8 +23,34 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
             "Bitget",
         })
 
-    async def test_live_mode_is_reserved_and_registers_no_connectors_yet(self) -> None:
-        registry = build_connector_registry("live")
+    async def test_mock_mode_uses_fake_even_if_binance_is_configured(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="mock",
+            enabled_connectors=("binance",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("fake",))
+
+    async def test_live_mode_registers_binance_public_connector(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("binance",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("binance",))
+        self.assertEqual(registry.get("binance").data_source, "binance_public_rest")
+
+    async def test_live_mode_with_no_supported_connector_registers_none(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("fake",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
 
         self.assertEqual(registry.list_names(), ())
 

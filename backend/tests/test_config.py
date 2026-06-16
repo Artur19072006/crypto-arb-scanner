@@ -50,6 +50,7 @@ fees:
         self.assertEqual(config.default_filters.min_volume_24h_usd, 123456)
         self.assertEqual(config.default_filters.exchanges, ("Binance",))
         self.assertEqual(config.data_source_mode, "mock")
+        self.assertEqual(config.enabled_connectors, ("fake",))
         self.assertTrue(config.telegram.enabled)
         self.assertEqual(config.telegram.alert_cooldown_seconds, 45)
         self.assertFalse(hasattr(config.telegram, "bot_token"))
@@ -91,6 +92,9 @@ filters:
 
         self.assertIn("Binance", config.fees)
         self.assertEqual(config.data_source_mode, "mock")
+        self.assertEqual(config.enabled_connectors, ("fake",))
+        self.assertEqual(config.max_symbols, 10)
+        self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
         self.assertEqual(config.default_filters.min_raw_spread, 0.10)
         self.assertEqual(config.default_filters.min_volume_24h_usd, 400_000)
 
@@ -101,6 +105,12 @@ filters:
             config_path.write_text(
                 """
 data_source_mode: live
+enabled_connectors:
+  - binance
+max_symbols: 2
+symbol_allowlist:
+  - BTCUSDT
+  - ETHUSDT
 """,
                 encoding="utf-8",
             )
@@ -111,6 +121,9 @@ data_source_mode: live
             )
 
         self.assertEqual(config.data_source_mode, "live")
+        self.assertEqual(config.enabled_connectors, ("binance",))
+        self.assertEqual(config.max_symbols, 2)
+        self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT"))
 
     def test_loaded_fees_are_used_by_spread_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

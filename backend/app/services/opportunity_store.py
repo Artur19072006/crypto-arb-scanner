@@ -8,6 +8,7 @@ class OpportunityStore:
     def __init__(self) -> None:
         self._opportunities: list[ArbitrageOpportunity] = []
         self._last_updated: datetime | None = None
+        self._last_error: str | None = None
         self._lock = asyncio.Lock()
 
     async def update_opportunities(
@@ -18,6 +19,7 @@ class OpportunityStore:
         async with self._lock:
             self._opportunities = list(opportunities)
             self._last_updated = updated_at or datetime.now(timezone.utc)
+            self._last_error = None
 
     async def get_all_opportunities(self) -> list[ArbitrageOpportunity]:
         async with self._lock:
@@ -30,3 +32,11 @@ class OpportunityStore:
     async def opportunity_count(self) -> int:
         async with self._lock:
             return len(self._opportunities)
+
+    async def set_error(self, message: str) -> None:
+        async with self._lock:
+            self._last_error = message
+
+    async def get_last_error(self) -> str | None:
+        async with self._lock:
+            return self._last_error

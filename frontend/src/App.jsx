@@ -119,14 +119,14 @@ function App() {
         </div>
         <div className="status-panel">
           <span className={`status-dot status-${requestStatus}`} aria-hidden="true" />
-          <span>{requestStatus === "ready" ? "Mock data only" : requestStatus}</span>
+          <span>{requestStatus === "ready" ? formatModeLabel(scannerStatus?.mode) : requestStatus}</span>
         </div>
       </header>
 
       <section className="metrics-band" aria-label="Scanner summary">
         <div>
           <span className="metric-label">Mode</span>
-          <strong>{scannerStatus?.mode === "mock" ? "Mock data only" : "-"}</strong>
+          <strong>{formatModeLabel(scannerStatus?.mode)}</strong>
         </div>
         <div>
           <span className="metric-label">Last update</span>
@@ -364,6 +364,17 @@ function formatConnectors(connectors) {
   }
 
   return connectors.join(", ");
+}
+
+function formatModeLabel(mode) {
+  if (mode === "live") {
+    return "Live public data";
+  }
+  if (mode === "mock") {
+    return "Mock data only";
+  }
+
+  return "-";
 }
 
 export default App;

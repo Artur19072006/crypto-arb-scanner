@@ -2,7 +2,7 @@
 
 Local-first scanner skeleton for USDT perpetual futures arbitrage opportunities.
 
-This version uses mock bid/ask data only. It does not connect to real exchanges, place trades, use API keys, or send Telegram messages.
+This version defaults to mock bid/ask data. Optional Binance live mode uses public market-data endpoints only. It does not place trades, use API keys, call private/account endpoints, or send Telegram messages.
 
 ## Current Scope
 
@@ -12,7 +12,7 @@ This version uses mock bid/ask data only. It does not connect to real exchanges,
 - SQLite-ready folder and database placeholder
 - Config example for fees, filters, blacklist, and Telegram settings
 - Placeholder Telegram notifier that does nothing without future implementation
-- Connector registry with only the fake connector active in mock mode
+- Connector registry with fake connector in mock mode and optional Binance public connector in live mode
 
 ## Project Structure
 
@@ -95,7 +95,7 @@ Telegram settings are placeholders for now. Do not commit real bot tokens or cha
 
 The backend reads `config/config.yaml` when it exists. If it does not exist, it falls back to `config/config.example.yaml`, then to built-in safe defaults.
 
-`data_source_mode` defaults to `mock`. The value `live` is reserved for future work, but live exchange connectors are not implemented yet.
+`data_source_mode` defaults to `mock`. Live mode currently supports only the Binance public market-data connector.
 
 Frontend-safe settings are exposed at:
 
@@ -114,11 +114,36 @@ http://127.0.0.1:8000/api/status
 - `ExchangeConnector` defines `name`, `data_source`, and `fetch_snapshots()`.
 - `ConnectorRegistry` registers available connectors.
 - Current active connector: `FakeExchangeConnector`.
-- Future real connectors such as Binance and Bybit should be registered through the registry after they exist.
+- Optional live connector: `BinancePublicConnector` for Binance USD-M Futures public REST market data.
+- Future real connectors such as Bybit should be registered through the registry after they exist.
 - Symbol normalization currently supports mock symbols such as `BTCUSDT`, `ETHUSDT`, and `SOLUSDT`.
 - Future exchange format examples: Binance `BTCUSDT`, OKX `BTC-USDT-SWAP`, Gate `BTC_USDT`.
 
-Live exchange WebSocket/REST calls, API keys, order execution, and automatic trading are intentionally not implemented.
+Private/account endpoints, API keys, order execution, and automatic trading are intentionally not implemented.
+
+## Binance Public Live Mode
+
+To test Binance public market data, edit `config/config.yaml`:
+
+```yaml
+data_source_mode: live
+enabled_connectors:
+  - binance
+max_symbols: 3
+symbol_allowlist:
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
+```
+
+Restart the backend after changing config. Live mode uses Binance USD-M Futures public REST market data only:
+
+- Exchange metadata: `/fapi/v1/exchangeInfo`
+- Best bid/ask: `/fapi/v1/ticker/bookTicker`
+- 24h quote volume: `/fapi/v1/ticker/24hr`
+- Funding context: `/fapi/v1/premiumIndex`
+
+With only Binance active, cross-exchange arbitrage opportunities will usually be empty because the spread engine needs at least two exchanges for the same symbol.
 
 ## Development Notes
 
@@ -127,4 +152,4 @@ Live exchange WebSocket/REST calls, API keys, order execution, and automatic tra
 - Short side is the highest bid.
 - Raw spread is `(highest_bid - lowest_ask) / lowest_ask * 100`.
 - Net spread currently uses a conservative mock taker-fee estimate.
-- Real exchange market-data connectors should be added later, starting with Binance and then Bybit.
+- Additional real exchange market-data connectors should be added later, starting with Bybit.

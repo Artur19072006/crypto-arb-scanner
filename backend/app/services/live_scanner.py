@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import suppress
 
-from app.connectors.registry import ConnectorRegistry, build_connector_registry
+from app.connectors.registry import ConnectorRegistry, build_connector_registry_from_config
 from app.core.config import get_app_config
 from app.domain.models import ScannerFilters
 from app.services.market_data_cache import MarketDataCache
@@ -13,12 +13,9 @@ from app.services.spread_engine import calculate_opportunities
 
 logger = logging.getLogger(__name__)
 SCAN_INTERVAL_SECONDS = 5
-SCANNER_MODE = "mock"
-
-
 def get_connector_registry() -> ConnectorRegistry:
     config = get_app_config()
-    return build_connector_registry(config.data_source_mode)
+    return build_connector_registry_from_config(config)
 
 
 async def refresh_mock_scanner_once(
@@ -28,9 +25,23 @@ async def refresh_mock_scanner_once(
 ) -> None:
     config = get_app_config()
     active_registry = registry or get_connector_registry()
+    connectors = active_registry.list_connectors()
+    if not connectors:
+        await store.set_error("No active market data connectors")
+        return
+
     snapshots = []
-    for connector in active_registry.list_connectors():
-        snapshots.extend(await connector.fetch_snapshots())
+    errors: list[str] = []
+    for connector in connectors:
+        try:
+            snapshots.extend(await connector.fetch_snapshots())
+        except Exception as exc:
+            errors.append(f"{connector.name}: {exc}")
+
+    if errors:
+        await store.set_error("; ".join(errors))
+        if not snapshots:
+            return
 
     await cache.update_snapshots(snapshots)
 
@@ -42,6 +53,8 @@ async def refresh_mock_scanner_once(
         enabled_exchange_filter,
     )
     await store.update_opportunities(opportunities)
+    if errors:
+        await store.set_error("; ".join(errors))
 
 
 async def run_mock_scanner_loop(
