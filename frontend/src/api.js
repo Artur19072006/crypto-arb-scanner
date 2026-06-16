@@ -26,6 +26,16 @@ export async function fetchSettings() {
   return response.json();
 }
 
+export async function fetchStatus() {
+  const response = await fetch("/api/status");
+
+  if (!response.ok) {
+    throw new Error(`Failed to load scanner status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 function addOptionalParam(params, key, value) {
   if (value === undefined || value === null || value === "") {
     return;

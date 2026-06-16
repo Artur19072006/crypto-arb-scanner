@@ -64,3 +64,12 @@ class AppConfig(BaseModel):
     supported_exchanges: tuple[str, ...]
     telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
     config_source: str
+
+
+class ScannerStatus(BaseModel):
+    data_source: str
+    mode: Literal["mock"]
+    last_updated: datetime | None
+    snapshot_count: int = Field(ge=0)
+    opportunity_count: int = Field(ge=0)
+    enabled_exchanges: tuple[str, ...]

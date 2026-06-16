@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchOpportunities, fetchSettings } from "./api.js";
+import { fetchOpportunities, fetchSettings, fetchStatus } from "./api.js";
 import {
   formatDateTime,
   formatNumber,
@@ -11,17 +11,18 @@ import {
 function App() {
   const [opportunities, setOpportunities] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [scannerStatus, setScannerStatus] = useState(null);
   const [defaultFilters, setDefaultFilters] = useState(createEmptyFilters());
   const [draftFilters, setDraftFilters] = useState(createEmptyFilters());
   const [appliedFilters, setAppliedFilters] = useState(null);
-  const [status, setStatus] = useState("loading");
+  const [requestStatus, setRequestStatus] = useState("loading");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadSettings() {
-      setStatus("loading");
+      setRequestStatus("loading");
       setError("");
 
       try {
@@ -37,7 +38,7 @@ function App() {
       } catch (loadError) {
         if (isMounted) {
           setError(loadError.message);
-          setStatus("error");
+          setRequestStatus("error");
         }
       }
     }
@@ -56,38 +57,48 @@ function App() {
 
     let isMounted = true;
 
-    async function loadOpportunities() {
-      setStatus("loading");
+    async function loadLiveData(showLoading) {
+      if (showLoading) {
+        setRequestStatus("loading");
+      }
       setError("");
 
       try {
-        const data = await fetchOpportunities(appliedFilters);
+        const [data, loadedScannerStatus] = await Promise.all([
+          fetchOpportunities(appliedFilters),
+          fetchStatus()
+        ]);
         if (isMounted) {
           setOpportunities(data);
-          setStatus("ready");
+          setScannerStatus(loadedScannerStatus);
+          setRequestStatus("ready");
         }
       } catch (loadError) {
         if (isMounted) {
           setError(loadError.message);
-          setStatus("error");
+          setRequestStatus("error");
         }
       }
     }
 
-    loadOpportunities();
+    loadLiveData(true);
+    const refreshTimer = window.setInterval(() => {
+      loadLiveData(false);
+    }, 5000);
 
     return () => {
       isMounted = false;
+      window.clearInterval(refreshTimer);
     };
   }, [appliedFilters]);
 
   const lastUpdated = useMemo(() => {
-    if (!opportunities.length) {
+    if (!scannerStatus?.last_updated) {
       return "-";
     }
 
-    return formatDateTime(opportunities[0].timestamp);
-  }, [opportunities]);
+    return formatDateTime(scannerStatus.last_updated);
+  }, [scannerStatus]);
 
   function applyFilters() {
     setAppliedFilters(normalizeFilters(draftFilters));
@@ -107,15 +118,15 @@ function App() {
           <h1>Perpetual Futures Arbitrage</h1>
         </div>
         <div className="status-panel">
-          <span className={`status-dot status-${status}`} aria-hidden="true" />
-          <span>{status === "ready" ? "Mock data only" : status}</span>
+          <span className={`status-dot status-${requestStatus}`} aria-hidden="true" />
+          <span>{requestStatus === "ready" ? "Mock data only" : requestStatus}</span>
         </div>
       </header>
 
       <section className="metrics-band" aria-label="Scanner summary">
         <div>
-          <span className="metric-label">Opportunities</span>
-          <strong>{opportunities.length}</strong>
+          <span className="metric-label">Mode</span>
+          <strong>{scannerStatus?.mode === "mock" ? "Mock data only" : "-"}</strong>
         </div>
         <div>
           <span className="metric-label">Last update</span>
@@ -123,7 +134,11 @@ function App() {
         </div>
         <div>
           <span className="metric-label">Data source</span>
-          <strong>Mock snapshots</strong>
+          <strong>{scannerStatus?.data_source ?? "Mock snapshots"}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Opportunities</span>
+          <strong>{scannerStatus?.opportunity_count ?? opportunities.length}</strong>
         </div>
       </section>
 
@@ -133,13 +148,13 @@ function App() {
         onChange={setDraftFilters}
         onApply={applyFilters}
         onReset={resetFilters}
-        disabled={!settings || status === "loading"}
+        disabled={!settings}
       />
 
-      {status === "error" ? (
+      {requestStatus === "error" ? (
         <p className="error-message">{error}</p>
       ) : (
-        <OpportunitiesTable opportunities={opportunities} status={status} />
+        <OpportunitiesTable opportunities={opportunities} status={requestStatus} />
       )}
     </main>
   );

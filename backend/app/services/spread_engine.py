@@ -127,6 +127,14 @@ def _apply_opportunity_filters(
     opportunities: list[ArbitrageOpportunity],
     filters: ScannerFilters,
 ) -> list[ArbitrageOpportunity]:
+    return filter_opportunities(opportunities, filters)
+
+
+def filter_opportunities(
+    opportunities: list[ArbitrageOpportunity],
+    filters: ScannerFilters,
+) -> list[ArbitrageOpportunity]:
+    allowed_exchanges = set(filters.exchanges)
     filtered: list[ArbitrageOpportunity] = []
     for opportunity in opportunities:
         if (
@@ -142,6 +150,11 @@ def _apply_opportunity_filters(
         if (
             filters.min_volume_24h_usd is not None
             and opportunity.volume_24h_usd < filters.min_volume_24h_usd
+        ):
+            continue
+        if allowed_exchanges and (
+            opportunity.long_exchange not in allowed_exchanges
+            or opportunity.short_exchange not in allowed_exchanges
         ):
             continue
 

@@ -101,6 +101,12 @@ Frontend-safe settings are exposed at:
 http://127.0.0.1:8000/api/settings
 ```
 
+The backend starts a mock in-memory scanner loop on startup. It refreshes fake market snapshots every few seconds, recalculates opportunities, and exposes scanner state at:
+
+```text
+http://127.0.0.1:8000/api/status
+```
+
 ## Development Notes
 
 - Spread logic must use bid/ask data, not last traded price.
