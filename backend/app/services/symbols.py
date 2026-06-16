@@ -23,6 +23,7 @@ def symbol_format_examples() -> dict[str, str]:
     return {
         "normalized": "BTCUSDT",
         "Binance": "BTCUSDT",
+        "Bybit": "BTCUSDT",
         "OKX": "BTC-USDT-SWAP",
         "Gate": "BTC_USDT",
     }
@@ -30,5 +31,6 @@ def symbol_format_examples() -> dict[str, str]:
 
 # Future connector examples:
 # Binance USDT perpetual: BTCUSDT
+# Bybit USDT perpetual: BTCUSDT
 # OKX USDT perpetual swap: BTC-USDT-SWAP
 # Gate USDT perpetual: BTC_USDT

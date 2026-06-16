@@ -125,6 +125,25 @@ symbol_allowlist:
         self.assertEqual(config.max_symbols, 2)
         self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT"))
 
+    def test_live_data_source_mode_defaults_to_public_connectors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+data_source_mode: live
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertEqual(config.data_source_mode, "live")
+        self.assertEqual(config.enabled_connectors, ("binance", "bybit"))
+
     def test_loaded_fees_are_used_by_spread_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

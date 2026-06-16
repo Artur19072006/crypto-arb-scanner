@@ -23,10 +23,10 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
             "Bitget",
         })
 
-    async def test_mock_mode_uses_fake_even_if_binance_is_configured(self) -> None:
+    async def test_mock_mode_uses_fake_even_if_live_connectors_are_configured(self) -> None:
         registry = build_connector_registry(
             data_source_mode="mock",
-            enabled_connectors=("binance",),
+            enabled_connectors=("binance", "bybit"),
             symbol_allowlist=("BTCUSDT",),
             max_symbols=1,
         )
@@ -43,6 +43,29 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry.list_names(), ("binance",))
         self.assertEqual(registry.get("binance").data_source, "binance_public_rest")
+
+    async def test_live_mode_registers_binance_and_bybit_public_connectors(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("binance", "bybit"),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("binance", "bybit"))
+        self.assertEqual(registry.get("binance").data_source, "binance_public_rest")
+        self.assertEqual(registry.get("bybit").data_source, "bybit_public_rest")
+
+    async def test_live_mode_registers_bybit_public_connector(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("bybit",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("bybit",))
+        self.assertEqual(registry.get("bybit").data_source, "bybit_public_rest")
 
     async def test_live_mode_with_no_supported_connector_registers_none(self) -> None:
         registry = build_connector_registry(

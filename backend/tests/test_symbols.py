@@ -18,8 +18,10 @@ class SymbolNormalizationTests(unittest.TestCase):
         examples = symbol_format_examples()
 
         self.assertEqual(examples["Binance"], "BTCUSDT")
+        self.assertEqual(examples["Bybit"], "BTCUSDT")
         self.assertEqual(examples["OKX"], "BTC-USDT-SWAP")
         self.assertEqual(examples["Gate"], "BTC_USDT")
+        self.assertEqual(normalize_symbol(examples["Bybit"]), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["OKX"]), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["Gate"]), "BTCUSDT")
 

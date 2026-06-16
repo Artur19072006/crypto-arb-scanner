@@ -187,7 +187,7 @@ def _load_enabled_connectors(
         if connectors:
             return connectors
 
-    return ("fake",) if data_source_mode == "mock" else ("binance",)
+    return ("fake",) if data_source_mode == "mock" else ("binance", "bybit")
 
 
 def _load_max_symbols(raw_config: dict[str, Any]) -> int:

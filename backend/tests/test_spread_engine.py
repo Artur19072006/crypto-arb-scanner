@@ -6,7 +6,7 @@ from app.services.spread_engine import calculate_opportunities
 
 
 class SpreadEngineTests(unittest.TestCase):
-    def test_calculates_bid_ask_spread_and_net_after_round_trip_fees(self) -> None:
+    def test_calculates_binance_bybit_bid_ask_spread_and_net_after_round_trip_fees(self) -> None:
         opportunities = calculate_opportunities(
             snapshots=[
                 self._snapshot("Binance", "BTCUSDT", bid=99.5, ask=100.0),

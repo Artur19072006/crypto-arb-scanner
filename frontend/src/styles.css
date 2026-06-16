@@ -323,7 +323,8 @@ tbody tr:last-child td {
 }
 
 .empty-state,
-.error-message {
+.error-message,
+.warning-message {
   color: #6c746d;
   font-weight: 700;
 }
@@ -340,6 +341,15 @@ tbody tr:last-child td {
   border-radius: 8px;
   background: #fff1ee;
   color: #96301f;
+}
+
+.warning-message {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid #e8cf84;
+  border-radius: 8px;
+  background: #fff8df;
+  color: #6f5200;
 }
 
 @media (max-width: 720px) {

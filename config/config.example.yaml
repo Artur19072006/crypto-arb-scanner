@@ -1,6 +1,11 @@
 data_source_mode: mock
 enabled_connectors:
   - fake
+# For public live market-data testing, use:
+# data_source_mode: live
+# enabled_connectors:
+#   - binance
+#   - bybit
 max_symbols: 3
 symbol_allowlist:
   - BTCUSDT

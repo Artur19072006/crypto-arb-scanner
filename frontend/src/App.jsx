@@ -155,6 +155,10 @@ function App() {
         disabled={!settings}
       />
 
+      {scannerStatus?.last_error && (
+        <p className="warning-message">Scanner degraded: {scannerStatus.last_error}</p>
+      )}
+
       {requestStatus === "error" ? (
         <p className="error-message">{error}</p>
       ) : (
