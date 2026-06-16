@@ -1,0 +1,38 @@
+fees:
+  Binance:
+    maker_percent: 0.02
+    taker_percent: 0.05
+  Bybit:
+    maker_percent: 0.02
+    taker_percent: 0.055
+  OKX:
+    maker_percent: 0.02
+    taker_percent: 0.05
+  Bitget:
+    maker_percent: 0.02
+    taker_percent: 0.06
+  Gate:
+    maker_percent: 0.02
+    taker_percent: 0.05
+  KuCoin:
+    maker_percent: 0.02
+    taker_percent: 0.06
+
+filters:
+  min_24h_volume_usd: 400000
+  min_raw_spread_percent: 0.10
+  min_net_spread_percent: 0.00
+  enabled_exchanges:
+    - Binance
+    - Bybit
+    - OKX
+    - Bitget
+  blacklist:
+    symbols: []
+    exchanges: []
+
+telegram:
+  enabled: false
+  alert_cooldown_seconds: 300
+  bot_token_env: TELEGRAM_BOT_TOKEN
+  chat_id_env: TELEGRAM_CHAT_ID

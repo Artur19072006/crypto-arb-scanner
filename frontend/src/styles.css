@@ -1,0 +1,251 @@
+:root {
+  color: #17211b;
+  background: #f4f6f1;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1420px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 20px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #536255;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: #17211b;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.status-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d6dccf;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #39443d;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #a9b1a4;
+}
+
+.status-ready {
+  background: #2c8f4f;
+}
+
+.status-error {
+  background: #bd3d2a;
+}
+
+.metrics-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d6dccf;
+  border-radius: 8px;
+  background: #d6dccf;
+}
+
+.metrics-band > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.metric-label {
+  color: #5d6b60;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.metrics-band strong {
+  overflow: hidden;
+  color: #17211b;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-section {
+  margin-top: 18px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid #d6dccf;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th,
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf0e8;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  background: #eef2e8;
+  color: #536255;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+td {
+  color: #243029;
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+tbody tr:hover {
+  background: #f9fbf6;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.symbol-cell {
+  color: #101814;
+  font-weight: 800;
+}
+
+.positive {
+  color: #1f7a43;
+  font-weight: 800;
+}
+
+.negative {
+  color: #b43d2c;
+  font-weight: 800;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.funding-good,
+.liquidity-ok {
+  background: #e1f3e5;
+  color: #1f6d3d;
+}
+
+.funding-neutral,
+.liquidity-thin {
+  background: #fff1c7;
+  color: #7a5a00;
+}
+
+.funding-bad,
+.liquidity-holey {
+  background: #ffe2dc;
+  color: #96301f;
+}
+
+.empty-state,
+.error-message {
+  color: #6c746d;
+  font-weight: 700;
+}
+
+.empty-state {
+  padding: 28px 14px;
+  text-align: center;
+}
+
+.error-message {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid #efb5a9;
+  border-radius: 8px;
+  background: #fff1ee;
+  color: #96301f;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 20px, 1420px);
+    padding-top: 18px;
+  }
+
+  .top-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .metrics-band {
+    grid-template-columns: 1fr;
+  }
+}
