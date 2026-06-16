@@ -125,6 +125,47 @@ h1 {
   margin-top: 18px;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #d6dccf;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.filter-bar span {
+  color: #536255;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.filter-bar input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #cfd7c8;
+  border-radius: 8px;
+  background: #fbfcf8;
+  color: #17211b;
+}
+
+.filter-bar input:focus {
+  border-color: #3d7b59;
+  outline: 2px solid #d9eadf;
+}
+
 .table-scroll {
   overflow-x: auto;
   border: 1px solid #d6dccf;
@@ -246,6 +287,10 @@ tbody tr:last-child td {
   }
 
   .metrics-band {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar {
     grid-template-columns: 1fr;
   }
 }

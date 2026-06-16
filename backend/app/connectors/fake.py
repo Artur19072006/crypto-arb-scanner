@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from app.connectors.base import ExchangeConnector, MarketSnapshot
+from app.connectors.base import ExchangeConnector
+from app.domain.models import MarketSnapshot
 
 
 class FakeExchangeConnector(ExchangeConnector):

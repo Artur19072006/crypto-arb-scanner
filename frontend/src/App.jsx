@@ -10,6 +10,11 @@ import {
 
 function App() {
   const [opportunities, setOpportunities] = useState([]);
+  const [filters, setFilters] = useState({
+    minRawSpread: "",
+    minNetSpread: "",
+    minVolume24hUsd: ""
+  });
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
 
@@ -17,8 +22,11 @@ function App() {
     let isMounted = true;
 
     async function loadOpportunities() {
+      setStatus("loading");
+      setError("");
+
       try {
-        const data = await fetchOpportunities();
+        const data = await fetchOpportunities(filters);
         if (isMounted) {
           setOpportunities(data);
           setStatus("ready");
@@ -36,7 +44,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [filters]);
 
   const lastUpdated = useMemo(() => {
     if (!opportunities.length) {
@@ -55,7 +63,7 @@ function App() {
         </div>
         <div className="status-panel">
           <span className={`status-dot status-${status}`} aria-hidden="true" />
-          <span>{status === "ready" ? "Mock data online" : status}</span>
+          <span>{status === "ready" ? "Mock data only" : status}</span>
         </div>
       </header>
 
@@ -70,20 +78,73 @@ function App() {
         </div>
         <div>
           <span className="metric-label">Data source</span>
-          <strong>Mock bid/ask</strong>
+          <strong>Mock snapshots</strong>
         </div>
       </section>
+
+      <FilterControls filters={filters} onChange={setFilters} />
 
       {status === "error" ? (
         <p className="error-message">{error}</p>
       ) : (
-        <OpportunitiesTable opportunities={opportunities} />
+        <OpportunitiesTable opportunities={opportunities} status={status} />
       )}
     </main>
   );
 }
 
-function OpportunitiesTable({ opportunities }) {
+function FilterControls({ filters, onChange }) {
+  function updateFilter(key, value) {
+    onChange((currentFilters) => ({
+      ...currentFilters,
+      [key]: value
+    }));
+  }
+
+  return (
+    <section className="filter-bar" aria-label="Opportunity filters">
+      <label>
+        <span>Min raw spread</span>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={filters.minRawSpread}
+          onChange={(event) => updateFilter("minRawSpread", event.target.value)}
+          placeholder="0.10"
+        />
+      </label>
+      <label>
+        <span>Min net spread</span>
+        <input
+          type="number"
+          step="0.01"
+          value={filters.minNetSpread}
+          onChange={(event) => updateFilter("minNetSpread", event.target.value)}
+          placeholder="0.00"
+        />
+      </label>
+      <label>
+        <span>Min 24h volume</span>
+        <input
+          type="number"
+          min="0"
+          step="10000"
+          value={filters.minVolume24hUsd}
+          onChange={(event) => updateFilter("minVolume24hUsd", event.target.value)}
+          placeholder="400000"
+        />
+      </label>
+    </section>
+  );
+}
+
+function OpportunitiesTable({ opportunities, status }) {
+  const emptyMessage =
+    status === "loading"
+      ? "Loading opportunities..."
+      : "No opportunities match the current filters.";
+
   return (
     <section className="table-section" aria-label="Arbitrage opportunities">
       <div className="table-scroll">
@@ -134,7 +195,7 @@ function OpportunitiesTable({ opportunities }) {
             {!opportunities.length && (
               <tr>
                 <td colSpan="11" className="empty-state">
-                  Loading opportunities...
+                  {emptyMessage}
                 </td>
               </tr>
             )}
