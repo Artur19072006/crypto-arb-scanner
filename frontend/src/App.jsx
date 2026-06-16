@@ -100,14 +100,43 @@ function App() {
     return formatDateTime(scannerStatus.last_updated);
   }, [scannerStatus]);
 
+  const visibleExchangeOptions = useMemo(
+    () => getVisibleExchangeOptions(scannerStatus, settings),
+    [scannerStatus, settings]
+  );
+  const activeExchangeOptions = useMemo(
+    () => getActiveExchangeOptions(scannerStatus, settings),
+    [scannerStatus, settings]
+  );
+  const totalOpportunities = scannerStatus?.total_opportunity_count
+    ?? scannerStatus?.opportunity_count
+    ?? opportunities.length;
+
   function applyFilters() {
-    setAppliedFilters(normalizeFilters(draftFilters));
+    const normalizedFilters = normalizeFilters(draftFilters);
+    setDraftFilters(normalizedFilters);
+    setAppliedFilters(normalizedFilters);
   }
 
   function resetFilters() {
     const restoredFilters = normalizeFilters(defaultFilters);
     setDraftFilters(restoredFilters);
     setAppliedFilters(restoredFilters);
+  }
+
+  function showAllOpportunities() {
+    const exchangeSelection = activeExchangeOptions.length
+      ? activeExchangeOptions
+      : visibleExchangeOptions;
+    const showAllFilters = {
+      minRawSpread: "0",
+      minNetSpread: "-1",
+      minVolume24hUsd: "0",
+      exchanges: exchangeSelection
+    };
+
+    setDraftFilters(showAllFilters);
+    setAppliedFilters(showAllFilters);
   }
 
   return (
@@ -129,16 +158,20 @@ function App() {
           <strong>{formatModeLabel(scannerStatus?.mode)}</strong>
         </div>
         <div>
+          <span className="metric-label">Snapshots</span>
+          <strong>{scannerStatus?.snapshot_count ?? "-"}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Scanner found</span>
+          <strong>{totalOpportunities}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Matching filters</span>
+          <strong>{opportunities.length}</strong>
+        </div>
+        <div>
           <span className="metric-label">Last update</span>
           <strong>{lastUpdated}</strong>
-        </div>
-        <div>
-          <span className="metric-label">Data source</span>
-          <strong>{scannerStatus?.data_source ?? "Mock snapshots"}</strong>
-        </div>
-        <div>
-          <span className="metric-label">Opportunities</span>
-          <strong>{scannerStatus?.opportunity_count ?? opportunities.length}</strong>
         </div>
         <div>
           <span className="metric-label">Connectors</span>
@@ -148,10 +181,11 @@ function App() {
 
       <FilterControls
         filters={draftFilters}
-        supportedExchanges={settings?.supported_exchanges ?? []}
+        exchangeOptions={visibleExchangeOptions}
         onChange={setDraftFilters}
         onApply={applyFilters}
         onReset={resetFilters}
+        onShowAll={showAllOpportunities}
         disabled={!settings}
       />
 
@@ -162,7 +196,11 @@ function App() {
       {requestStatus === "error" ? (
         <p className="error-message">{error}</p>
       ) : (
-        <OpportunitiesTable opportunities={opportunities} status={requestStatus} />
+        <OpportunitiesTable
+          opportunities={opportunities}
+          status={requestStatus}
+          totalOpportunities={totalOpportunities}
+        />
       )}
     </main>
   );
@@ -170,10 +208,11 @@ function App() {
 
 function FilterControls({
   filters,
-  supportedExchanges,
+  exchangeOptions,
   onChange,
   onApply,
   onReset,
+  onShowAll,
   disabled
 }) {
   function updateFilter(key, value) {
@@ -204,9 +243,8 @@ function FilterControls({
       <label>
         <span>Min raw spread</span>
         <input
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
+          inputMode="decimal"
           value={filters.minRawSpread}
           onChange={(event) => updateFilter("minRawSpread", event.target.value)}
           placeholder="0.10"
@@ -216,8 +254,8 @@ function FilterControls({
       <label>
         <span>Min net spread</span>
         <input
-          type="number"
-          step="0.01"
+          type="text"
+          inputMode="decimal"
           value={filters.minNetSpread}
           onChange={(event) => updateFilter("minNetSpread", event.target.value)}
           placeholder="0.00"
@@ -227,9 +265,8 @@ function FilterControls({
       <label>
         <span>Min 24h volume</span>
         <input
-          type="number"
-          min="0"
-          step="10000"
+          type="text"
+          inputMode="decimal"
           value={filters.minVolume24hUsd}
           onChange={(event) => updateFilter("minVolume24hUsd", event.target.value)}
           placeholder="400000"
@@ -239,7 +276,7 @@ function FilterControls({
       <fieldset className="exchange-filter">
         <legend>Exchanges</legend>
         <div className="exchange-options">
-          {supportedExchanges.map((exchange) => (
+          {exchangeOptions.map((exchange) => (
             <label key={exchange} className="exchange-option">
               <input
                 type="checkbox"
@@ -250,11 +287,17 @@ function FilterControls({
               <span>{exchange}</span>
             </label>
           ))}
+          {!exchangeOptions.length && (
+            <span className="exchange-empty">No active exchanges</span>
+          )}
         </div>
       </fieldset>
       <div className="filter-actions">
         <button type="button" onClick={onApply} disabled={disabled}>
           Apply filters
+        </button>
+        <button type="button" className="secondary-button" onClick={onShowAll} disabled={disabled}>
+          Show all
         </button>
         <button type="button" className="secondary-button" onClick={onReset} disabled={disabled}>
           Reset filters
@@ -264,11 +307,11 @@ function FilterControls({
   );
 }
 
-function OpportunitiesTable({ opportunities, status }) {
+function OpportunitiesTable({ opportunities, status, totalOpportunities }) {
   const emptyMessage =
     status === "loading"
       ? "Loading opportunities..."
-      : "No opportunities match the applied filters.";
+      : createEmptyOpportunityMessage(totalOpportunities);
 
   return (
     <section className="table-section" aria-label="Arbitrage opportunities">
@@ -342,24 +385,73 @@ function createEmptyFilters() {
 
 function toUiFilters(apiFilters = {}) {
   return {
-    minRawSpread: toInputValue(apiFilters.min_raw_spread),
-    minNetSpread: toInputValue(apiFilters.min_net_spread),
-    minVolume24hUsd: toInputValue(apiFilters.min_volume_24h_usd),
+    minRawSpread: toNumericInputValue(apiFilters.min_raw_spread),
+    minNetSpread: toNumericInputValue(apiFilters.min_net_spread),
+    minVolume24hUsd: toNumericInputValue(apiFilters.min_volume_24h_usd),
     exchanges: Array.isArray(apiFilters.exchanges) ? apiFilters.exchanges : []
   };
 }
 
 function normalizeFilters(filters) {
   return {
-    minRawSpread: filters.minRawSpread,
-    minNetSpread: filters.minNetSpread,
-    minVolume24hUsd: filters.minVolume24hUsd,
+    minRawSpread: normalizeDecimalInput(filters.minRawSpread),
+    minNetSpread: normalizeDecimalInput(filters.minNetSpread),
+    minVolume24hUsd: normalizeDecimalInput(filters.minVolume24hUsd),
     exchanges: Array.isArray(filters.exchanges) ? filters.exchanges : []
   };
 }
 
-function toInputValue(value) {
-  return value === null || value === undefined ? "" : String(value);
+function toNumericInputValue(value) {
+  return value === null || value === undefined ? "" : String(value).replace(",", ".");
+}
+
+function normalizeDecimalInput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim().replace(",", ".");
+}
+
+function getVisibleExchangeOptions(scannerStatus, settings) {
+  const supportedExchanges = Array.isArray(settings?.supported_exchanges)
+    ? settings.supported_exchanges
+    : [];
+
+  if (scannerStatus?.mode !== "live") {
+    return supportedExchanges;
+  }
+
+  const activeExchanges = getActiveExchangeOptions(scannerStatus, settings);
+  return activeExchanges.length ? activeExchanges : supportedExchanges;
+}
+
+function getActiveExchangeOptions(scannerStatus, settings) {
+  if (scannerStatus?.mode !== "live") {
+    return Array.isArray(settings?.supported_exchanges) ? settings.supported_exchanges : [];
+  }
+
+  const supportedExchanges = new Set(settings?.supported_exchanges ?? []);
+  const mappedExchanges = (scannerStatus?.active_connectors ?? [])
+    .map((connector) => CONNECTOR_EXCHANGE_NAMES[connector])
+    .filter(Boolean);
+
+  return mappedExchanges.filter((exchange) => (
+    !supportedExchanges.size || supportedExchanges.has(exchange)
+  ));
+}
+
+function createEmptyOpportunityMessage(totalOpportunities) {
+  const foundCount = Number(totalOpportunities) || 0;
+  if (foundCount > 0) {
+    return `Scanner found ${formatOpportunityCount(foundCount)}, but 0 match the applied filters. Try lowering min spread, net spread, or volume.`;
+  }
+
+  return "Scanner has not found any opportunities yet.";
+}
+
+function formatOpportunityCount(count) {
+  return `${count} ${count === 1 ? "opportunity" : "opportunities"}`;
 }
 
 function formatConnectors(connectors) {
@@ -380,5 +472,10 @@ function formatModeLabel(mode) {
 
   return "-";
 }
+
+const CONNECTOR_EXCHANGE_NAMES = {
+  binance: "Binance",
+  bybit: "Bybit"
+};
 
 export default App;

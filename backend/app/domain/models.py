@@ -80,5 +80,7 @@ class ScannerStatus(BaseModel):
     last_updated: datetime | None
     snapshot_count: int = Field(ge=0)
     opportunity_count: int = Field(ge=0)
+    total_opportunity_count: int = Field(ge=0)
+    stored_opportunity_count: int = Field(ge=0)
     enabled_exchanges: tuple[str, ...]
     active_connectors: tuple[str, ...]

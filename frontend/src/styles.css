@@ -98,7 +98,7 @@ h1 {
 
 .metrics-band {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   border: 1px solid #d6dccf;
@@ -207,6 +207,12 @@ h1 {
   width: 16px;
   height: 16px;
   accent-color: #2c8f4f;
+}
+
+.exchange-empty {
+  min-height: 34px;
+  padding: 8px 0;
+  color: #6c746d;
 }
 
 .filter-actions {

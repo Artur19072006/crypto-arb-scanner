@@ -1,9 +1,9 @@
 export async function fetchOpportunities(filters = {}) {
   const params = new URLSearchParams();
 
-  addOptionalParam(params, "min_raw_spread", filters.minRawSpread);
-  addOptionalParam(params, "min_net_spread", filters.minNetSpread);
-  addOptionalParam(params, "min_volume_24h_usd", filters.minVolume24hUsd);
+  addNumericParam(params, "min_raw_spread", filters.minRawSpread);
+  addNumericParam(params, "min_net_spread", filters.minNetSpread);
+  addNumericParam(params, "min_volume_24h_usd", filters.minVolume24hUsd);
   addExchangeParams(params, filters.exchanges);
 
   const query = params.toString();
@@ -36,12 +36,17 @@ export async function fetchStatus() {
   return response.json();
 }
 
-function addOptionalParam(params, key, value) {
+function addNumericParam(params, key, value) {
   if (value === undefined || value === null || value === "") {
     return;
   }
 
-  params.set(key, value);
+  const normalized = String(value).trim().replace(",", ".");
+  if (!normalized) {
+    return;
+  }
+
+  params.set(key, normalized);
 }
 
 function addExchangeParams(params, exchanges) {
