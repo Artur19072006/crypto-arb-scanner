@@ -23,6 +23,7 @@ class SpreadEngineTests(unittest.TestCase):
         self.assertEqual(opportunity.long_exchange, "Binance")
         self.assertEqual(opportunity.short_exchange, "Bybit")
         self.assertEqual(opportunity.raw_spread_percent, 1.0)
+        self.assertEqual(opportunity.estimated_fee_percent, 0.21)
         self.assertEqual(opportunity.estimated_net_spread_percent, 0.79)
         self.assertEqual(opportunity.volume_24h_usd, 1_000_000)
         self.assertEqual(opportunity.liquidity_status, "OK")

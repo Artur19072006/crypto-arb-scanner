@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -6,8 +6,11 @@ from app.core.config import get_app_config
 from app.domain.models import (
     AppConfig,
     ArbitrageOpportunity,
+    OpportunitiesResponse,
+    OpportunitySortBy,
     ScannerFilters,
     ScannerStatus,
+    SortDirection,
 )
 from app.services.live_scanner import active_connector_names, active_data_sources
 from app.services.runtime import (
@@ -64,24 +67,74 @@ async def get_scanner_status() -> ScannerStatus:
     )
 
 
-@router.get("/opportunities", response_model=list[ArbitrageOpportunity])
+DEFAULT_OPPORTUNITY_LIMIT = 100
+MAX_OPPORTUNITY_LIMIT = 500
+
+
+@router.get("/opportunities", response_model=OpportunitiesResponse)
 async def list_opportunities(
     min_raw_spread: Annotated[str | None, Query()] = None,
     min_net_spread: Annotated[str | None, Query()] = None,
     min_volume_24h_usd: Annotated[str | None, Query()] = None,
     exchanges: Annotated[list[str] | None, Query()] = None,
-) -> list[ArbitrageOpportunity]:
+    symbol_query: Annotated[str | None, Query()] = None,
+    sort_by: Annotated[str | None, Query()] = None,
+    sort_dir: Annotated[str | None, Query()] = None,
+    limit: Annotated[str | None, Query()] = None,
+) -> OpportunitiesResponse:
     config = get_app_config()
-    opportunities = await opportunity_store.get_all_opportunities()
+    stored_opportunities = await opportunity_store.get_all_opportunities()
+    opportunities = stored_opportunities
     if config.data_source_mode == "live":
         opportunities = await _filter_live_selected_symbols(opportunities)
 
-    return filter_opportunities(opportunities, _build_filters(
+    filters = _build_filters(
         min_raw_spread=min_raw_spread,
         min_net_spread=min_net_spread,
         min_volume_24h_usd=min_volume_24h_usd,
         exchanges=exchanges,
-    ))
+    )
+    return _build_opportunities_response(
+        stored_opportunities=stored_opportunities,
+        queryable_opportunities=opportunities,
+        filters=filters,
+        symbol_query=symbol_query,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        limit=limit,
+    )
+
+
+def _build_opportunities_response(
+    stored_opportunities: list[ArbitrageOpportunity],
+    queryable_opportunities: list[ArbitrageOpportunity],
+    filters: ScannerFilters,
+    symbol_query: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
+    limit: str | int | None = None,
+) -> OpportunitiesResponse:
+    filtered = filter_opportunities(queryable_opportunities, filters)
+    filtered = _filter_by_symbol_query(filtered, symbol_query)
+    parsed_sort_by = _parse_sort_by(sort_by)
+    parsed_sort_dir = _parse_sort_dir(sort_dir)
+    parsed_limit = _parse_limit(limit)
+    sorted_opportunities = _sort_opportunities(
+        filtered,
+        sort_by=parsed_sort_by,
+        sort_dir=parsed_sort_dir,
+    )
+    returned = sorted_opportunities[:parsed_limit]
+
+    return OpportunitiesResponse(
+        opportunities=returned,
+        total_stored_opportunity_count=len(stored_opportunities),
+        filtered_opportunity_count=len(filtered),
+        returned_count=len(returned),
+        sort_by=parsed_sort_by,
+        sort_dir=parsed_sort_dir,
+        limit=parsed_limit,
+    )
 
 
 async def _filter_live_selected_symbols(
@@ -117,6 +170,109 @@ def _status_symbols(
             )
         )
     return ()
+
+
+def _filter_by_symbol_query(
+    opportunities: list[ArbitrageOpportunity],
+    symbol_query: str | None,
+) -> list[ArbitrageOpportunity]:
+    normalized_query = normalize_symbol(symbol_query or "")
+    if not normalized_query:
+        return opportunities
+
+    return [
+        opportunity
+        for opportunity in opportunities
+        if normalized_query in normalize_symbol(opportunity.symbol)
+    ]
+
+
+def _sort_opportunities(
+    opportunities: list[ArbitrageOpportunity],
+    sort_by: OpportunitySortBy,
+    sort_dir: SortDirection,
+) -> list[ArbitrageOpportunity]:
+    reverse = sort_dir == "desc"
+    if sort_by == "symbol":
+        return sorted(
+            opportunities,
+            key=lambda opportunity: opportunity.symbol,
+            reverse=reverse,
+        )
+
+    return sorted(
+        opportunities,
+        key=lambda opportunity: _sort_value(opportunity, sort_by),
+        reverse=reverse,
+    )
+
+
+def _sort_value(
+    opportunity: ArbitrageOpportunity,
+    sort_by: OpportunitySortBy,
+) -> float:
+    if sort_by == "raw_spread":
+        return opportunity.raw_spread_percent
+    if sort_by == "volume_24h":
+        return opportunity.volume_24h_usd
+    if sort_by == "updated_at":
+        return opportunity.timestamp.timestamp()
+    return opportunity.estimated_net_spread_percent
+
+
+def _parse_sort_by(value: str | None) -> OpportunitySortBy:
+    normalized = (value or "net_spread").strip().lower()
+    allowed: set[OpportunitySortBy] = {
+        "raw_spread",
+        "net_spread",
+        "volume_24h",
+        "symbol",
+        "updated_at",
+    }
+    if normalized in allowed:
+        return cast(OpportunitySortBy, normalized)
+
+    raise HTTPException(
+        status_code=422,
+        detail="sort_by must be one of raw_spread, net_spread, volume_24h, symbol, updated_at",
+    )
+
+
+def _parse_sort_dir(value: str | None) -> SortDirection:
+    normalized = (value or "desc").strip().lower()
+    if normalized in {"asc", "desc"}:
+        return cast(SortDirection, normalized)
+
+    raise HTTPException(
+        status_code=422,
+        detail="sort_dir must be asc or desc",
+    )
+
+
+def _parse_limit(value: str | int | None) -> int:
+    if value in (None, ""):
+        return DEFAULT_OPPORTUNITY_LIMIT
+
+    try:
+        parsed = int(str(value).strip())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be an integer",
+        ) from exc
+
+    if parsed < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be at least 1",
+        )
+    if parsed > MAX_OPPORTUNITY_LIMIT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"limit must be at most {MAX_OPPORTUNITY_LIMIT}",
+        )
+
+    return parsed
 
 
 def _build_filters(

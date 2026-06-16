@@ -98,7 +98,7 @@ h1 {
 
 .metrics-band {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   border: 1px solid #d6dccf;
@@ -157,7 +157,7 @@ h1 {
 
 .filter-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 12px;
   margin-top: 18px;
   padding: 14px;
@@ -182,7 +182,8 @@ h1 {
   text-transform: uppercase;
 }
 
-.filter-bar input {
+.filter-bar input,
+.filter-bar select {
   width: 100%;
   min-height: 38px;
   padding: 8px 10px;
@@ -192,7 +193,8 @@ h1 {
   color: #17211b;
 }
 
-.filter-bar input:focus {
+.filter-bar input:focus,
+.filter-bar select:focus {
   border-color: #3d7b59;
   outline: 2px solid #d9eadf;
 }
@@ -268,7 +270,7 @@ h1 {
 
 table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1280px;
   border-collapse: collapse;
   table-layout: fixed;
 }

@@ -34,10 +34,15 @@ async def refresh_mock_scanner_once(
         await store.set_error("No active market data connectors")
         return
 
+    scan_config = (
+        config.model_copy(update={"data_source_mode": "mock"})
+        if _is_mock_registry(active_registry)
+        else config
+    )
     selected_symbols: tuple[str, ...] | None = None
-    selection = await symbol_universe_builder.build(config, active_registry)
+    selection = await symbol_universe_builder.build(scan_config, active_registry)
     errors: list[str] = list(selection.errors)
-    if config.data_source_mode == "live":
+    if scan_config.data_source_mode == "live":
         selected_symbols = selection.symbols
         if not selected_symbols and not errors:
             errors.append("No symbols selected for live scanning")
@@ -52,14 +57,14 @@ async def refresh_mock_scanner_once(
     if errors:
         await store.set_error("; ".join(errors))
         if not snapshots:
-            if config.data_source_mode == "live":
+            if scan_config.data_source_mode == "live":
                 await store.update_opportunities([])
             return
 
     await cache.update_snapshots(snapshots)
 
     cached_snapshots = await cache.get_all_snapshots()
-    if config.data_source_mode == "live" and selected_symbols is not None:
+    if scan_config.data_source_mode == "live" and selected_symbols is not None:
         allowed_symbols = set(selected_symbols)
         cached_snapshots = [
             snapshot
@@ -76,6 +81,10 @@ async def refresh_mock_scanner_once(
     await store.update_opportunities(opportunities)
     if errors:
         await store.set_error("; ".join(errors))
+
+
+def _is_mock_registry(registry: ConnectorRegistry) -> bool:
+    return registry.list_names() == ("fake",)
 
 
 async def run_mock_scanner_loop(

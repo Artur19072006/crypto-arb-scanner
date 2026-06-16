@@ -8,6 +8,14 @@ LiquidityStatus = Literal["OK", "Thin", "Holey"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
 SymbolSelectionMode = Literal["manual", "auto"]
+OpportunitySortBy = Literal[
+    "raw_spread",
+    "net_spread",
+    "volume_24h",
+    "symbol",
+    "updated_at",
+]
+SortDirection = Literal["asc", "desc"]
 
 
 class MarketSnapshot(BaseModel):
@@ -42,6 +50,7 @@ class ArbitrageOpportunity(BaseModel):
     bid_price: float = Field(gt=0)
     raw_spread_percent: float
     estimated_net_spread_percent: float
+    estimated_fee_percent: float = Field(default=0, ge=0)
     volume_24h_usd: float = Field(ge=0)
     best_ask_size: float = Field(ge=0)
     best_bid_size: float = Field(ge=0)
@@ -59,6 +68,16 @@ class ScannerFilters(BaseModel):
     min_net_spread: float | None = None
     min_volume_24h_usd: float | None = Field(default=None, ge=0)
     exchanges: tuple[str, ...] = ()
+
+
+class OpportunitiesResponse(BaseModel):
+    opportunities: list[ArbitrageOpportunity]
+    total_stored_opportunity_count: int = Field(ge=0)
+    filtered_opportunity_count: int = Field(ge=0)
+    returned_count: int = Field(ge=0)
+    sort_by: OpportunitySortBy
+    sort_dir: SortDirection
+    limit: int = Field(ge=1)
 
 
 class TelegramDisplaySettings(BaseModel):

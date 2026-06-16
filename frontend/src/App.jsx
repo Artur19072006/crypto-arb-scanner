@@ -10,6 +10,7 @@ import {
 
 function App() {
   const [opportunities, setOpportunities] = useState([]);
+  const [opportunityMeta, setOpportunityMeta] = useState(null);
   const [settings, setSettings] = useState(null);
   const [scannerStatus, setScannerStatus] = useState(null);
   const [defaultFilters, setDefaultFilters] = useState(createEmptyFilters());
@@ -64,12 +65,13 @@ function App() {
       setError("");
 
       try {
-        const [data, loadedScannerStatus] = await Promise.all([
+        const [loadedOpportunities, loadedScannerStatus] = await Promise.all([
           fetchOpportunities(appliedFilters),
           fetchStatus()
         ]);
         if (isMounted) {
-          setOpportunities(data);
+          setOpportunities(loadedOpportunities.opportunities ?? []);
+          setOpportunityMeta(loadedOpportunities);
           setScannerStatus(loadedScannerStatus);
           setRequestStatus("ready");
         }
@@ -111,6 +113,12 @@ function App() {
   const totalOpportunities = scannerStatus?.total_opportunity_count
     ?? scannerStatus?.opportunity_count
     ?? opportunities.length;
+  const totalStoredOpportunities = opportunityMeta?.total_stored_opportunity_count
+    ?? totalOpportunities;
+  const filteredOpportunityCount = opportunityMeta?.filtered_opportunity_count
+    ?? opportunities.length;
+  const returnedOpportunityCount = opportunityMeta?.returned_count
+    ?? opportunities.length;
 
   function applyFilters() {
     const normalizedFilters = normalizeFilters(draftFilters);
@@ -132,6 +140,10 @@ function App() {
       minRawSpread: "0",
       minNetSpread: "-1",
       minVolume24hUsd: "0",
+      symbolQuery: "",
+      sortBy: draftFilters.sortBy || "net_spread",
+      sortDir: draftFilters.sortDir || "desc",
+      limit: draftFilters.limit || "100",
       exchanges: exchangeSelection
     };
 
@@ -171,11 +183,15 @@ function App() {
         </div>
         <div>
           <span className="metric-label">Scanner found</span>
-          <strong>{totalOpportunities}</strong>
+          <strong>{totalStoredOpportunities}</strong>
         </div>
         <div>
           <span className="metric-label">Matching filters</span>
-          <strong>{opportunities.length}</strong>
+          <strong>{filteredOpportunityCount}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Displayed rows</span>
+          <strong>{returnedOpportunityCount}</strong>
         </div>
         <div>
           <span className="metric-label">Last update</span>
@@ -214,7 +230,8 @@ function App() {
         <OpportunitiesTable
           opportunities={opportunities}
           status={requestStatus}
-          totalOpportunities={totalOpportunities}
+          totalOpportunities={totalStoredOpportunities}
+          filteredOpportunities={filteredOpportunityCount}
         />
       )}
     </main>
@@ -288,6 +305,54 @@ function FilterControls({
           disabled={disabled}
         />
       </label>
+      <label>
+        <span>Symbol search</span>
+        <input
+          type="text"
+          value={filters.symbolQuery}
+          onChange={(event) => updateFilter("symbolQuery", event.target.value)}
+          placeholder="SOL"
+          disabled={disabled}
+        />
+      </label>
+      <label>
+        <span>Sort by</span>
+        <select
+          value={filters.sortBy}
+          onChange={(event) => updateFilter("sortBy", event.target.value)}
+          disabled={disabled}
+        >
+          <option value="net_spread">Net spread</option>
+          <option value="raw_spread">Raw spread</option>
+          <option value="volume_24h">24h volume</option>
+          <option value="symbol">Symbol</option>
+          <option value="updated_at">Updated</option>
+        </select>
+      </label>
+      <label>
+        <span>Direction</span>
+        <select
+          value={filters.sortDir}
+          onChange={(event) => updateFilter("sortDir", event.target.value)}
+          disabled={disabled}
+        >
+          <option value="desc">Descending</option>
+          <option value="asc">Ascending</option>
+        </select>
+      </label>
+      <label>
+        <span>Limit</span>
+        <select
+          value={filters.limit}
+          onChange={(event) => updateFilter("limit", event.target.value)}
+          disabled={disabled}
+        >
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="250">250</option>
+        </select>
+      </label>
       <fieldset className="exchange-filter">
         <legend>Exchanges</legend>
         <div className="exchange-options">
@@ -322,11 +387,16 @@ function FilterControls({
   );
 }
 
-function OpportunitiesTable({ opportunities, status, totalOpportunities }) {
+function OpportunitiesTable({
+  opportunities,
+  status,
+  totalOpportunities,
+  filteredOpportunities
+}) {
   const emptyMessage =
     status === "loading"
       ? "Loading opportunities..."
-      : createEmptyOpportunityMessage(totalOpportunities);
+      : createEmptyOpportunityMessage(totalOpportunities, filteredOpportunities);
 
   return (
     <section className="table-section" aria-label="Arbitrage opportunities">
@@ -341,6 +411,7 @@ function OpportunitiesTable({ opportunities, status, totalOpportunities }) {
               <th>Bid</th>
               <th>Raw spread</th>
               <th>Net spread</th>
+              <th>Fees</th>
               <th>24h volume</th>
               <th>Size</th>
               <th>Funding</th>
@@ -359,6 +430,7 @@ function OpportunitiesTable({ opportunities, status, totalOpportunities }) {
                 <td className={opportunity.estimated_net_spread_percent >= 0 ? "positive" : "negative"}>
                   {formatPercent(opportunity.estimated_net_spread_percent)}
                 </td>
+                <td>{formatPercent(opportunity.estimated_fee_percent)}</td>
                 <td>{formatUsd(opportunity.volume_24h_usd, 0)}</td>
                 <td>
                   {formatNumber(opportunity.best_ask_size, 4)} / {formatNumber(opportunity.best_bid_size, 4)}
@@ -377,7 +449,7 @@ function OpportunitiesTable({ opportunities, status, totalOpportunities }) {
             ))}
             {!opportunities.length && (
               <tr>
-                <td colSpan="11" className="empty-state">
+                <td colSpan="12" className="empty-state">
                   {emptyMessage}
                 </td>
               </tr>
@@ -394,6 +466,10 @@ function createEmptyFilters() {
     minRawSpread: "",
     minNetSpread: "",
     minVolume24hUsd: "",
+    symbolQuery: "",
+    sortBy: "net_spread",
+    sortDir: "desc",
+    limit: "100",
     exchanges: []
   };
 }
@@ -403,6 +479,10 @@ function toUiFilters(apiFilters = {}) {
     minRawSpread: toNumericInputValue(apiFilters.min_raw_spread),
     minNetSpread: toNumericInputValue(apiFilters.min_net_spread),
     minVolume24hUsd: toNumericInputValue(apiFilters.min_volume_24h_usd),
+    symbolQuery: "",
+    sortBy: "net_spread",
+    sortDir: "desc",
+    limit: "100",
     exchanges: Array.isArray(apiFilters.exchanges) ? apiFilters.exchanges : []
   };
 }
@@ -412,6 +492,10 @@ function normalizeFilters(filters) {
     minRawSpread: normalizeDecimalInput(filters.minRawSpread),
     minNetSpread: normalizeDecimalInput(filters.minNetSpread),
     minVolume24hUsd: normalizeDecimalInput(filters.minVolume24hUsd),
+    symbolQuery: normalizeTextInput(filters.symbolQuery),
+    sortBy: normalizeSortBy(filters.sortBy),
+    sortDir: normalizeSortDir(filters.sortDir),
+    limit: normalizeLimit(filters.limit),
     exchanges: Array.isArray(filters.exchanges) ? filters.exchanges : []
   };
 }
@@ -426,6 +510,27 @@ function normalizeDecimalInput(value) {
   }
 
   return String(value).trim().replace(",", ".");
+}
+
+function normalizeTextInput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
+function normalizeSortBy(value) {
+  return SORT_BY_OPTIONS.has(value) ? value : "net_spread";
+}
+
+function normalizeSortDir(value) {
+  return value === "asc" ? "asc" : "desc";
+}
+
+function normalizeLimit(value) {
+  const normalized = String(value ?? "100").trim();
+  return LIMIT_OPTIONS.has(normalized) ? normalized : "100";
 }
 
 function getVisibleExchangeOptions(scannerStatus, settings) {
@@ -456,13 +561,17 @@ function getActiveExchangeOptions(scannerStatus, settings) {
   ));
 }
 
-function createEmptyOpportunityMessage(totalOpportunities) {
+function createEmptyOpportunityMessage(totalOpportunities, filteredOpportunities) {
   const foundCount = Number(totalOpportunities) || 0;
+  const matchingCount = Number(filteredOpportunities) || 0;
+  if (foundCount > 0 && matchingCount === 0) {
+    return `Scanner found ${formatOpportunityCount(foundCount)}, but filters hide all results. Try lowering spread, volume, exchange, or symbol filters.`;
+  }
   if (foundCount > 0) {
-    return `Scanner found ${formatOpportunityCount(foundCount)}, but 0 match the applied filters. Try lowering min spread, net spread, or volume.`;
+    return "No rows are displayed for the current limit or sorting state.";
   }
 
-  return "Scanner has not found any opportunities yet.";
+  return "Scanner has not stored any opportunities yet.";
 }
 
 function formatOpportunityCount(count) {
@@ -511,5 +620,15 @@ const CONNECTOR_EXCHANGE_NAMES = {
   binance: "Binance",
   bybit: "Bybit"
 };
+
+const SORT_BY_OPTIONS = new Set([
+  "raw_spread",
+  "net_spread",
+  "volume_24h",
+  "symbol",
+  "updated_at"
+]);
+
+const LIMIT_OPTIONS = new Set(["25", "50", "100", "250"]);
 
 export default App;

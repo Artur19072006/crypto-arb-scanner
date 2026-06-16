@@ -4,6 +4,10 @@ export async function fetchOpportunities(filters = {}) {
   addNumericParam(params, "min_raw_spread", filters.minRawSpread);
   addNumericParam(params, "min_net_spread", filters.minNetSpread);
   addNumericParam(params, "min_volume_24h_usd", filters.minVolume24hUsd);
+  addTextParam(params, "symbol_query", filters.symbolQuery);
+  addTextParam(params, "sort_by", filters.sortBy);
+  addTextParam(params, "sort_dir", filters.sortDir);
+  addNumericParam(params, "limit", filters.limit);
   addExchangeParams(params, filters.exchanges);
 
   const query = params.toString();
@@ -13,7 +17,20 @@ export async function fetchOpportunities(filters = {}) {
     throw new Error(`Failed to load opportunities: ${response.status}`);
   }
 
-  return response.json();
+  const payload = await response.json();
+  if (Array.isArray(payload)) {
+    return {
+      opportunities: payload,
+      total_stored_opportunity_count: payload.length,
+      filtered_opportunity_count: payload.length,
+      returned_count: payload.length,
+      sort_by: filters.sortBy ?? "net_spread",
+      sort_dir: filters.sortDir ?? "desc",
+      limit: Number(filters.limit) || 100
+    };
+  }
+
+  return payload;
 }
 
 export async function fetchSettings() {
@@ -42,6 +59,19 @@ function addNumericParam(params, key, value) {
   }
 
   const normalized = String(value).trim().replace(",", ".");
+  if (!normalized) {
+    return;
+  }
+
+  params.set(key, normalized);
+}
+
+function addTextParam(params, key, value) {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+
+  const normalized = String(value).trim();
   if (!normalized) {
     return;
   }

@@ -68,11 +68,12 @@ def _calculate_unfiltered_opportunities(
         raw_spread_percent = (
             (highest_bid.best_bid - lowest_ask.best_ask) / lowest_ask.best_ask * 100
         )
-        estimated_net_spread_percent = raw_spread_percent - _round_trip_taker_fees(
+        estimated_fee_percent = _round_trip_taker_fees(
             lowest_ask.exchange,
             highest_bid.exchange,
             fees_by_exchange,
         )
+        estimated_net_spread_percent = raw_spread_percent - estimated_fee_percent
 
         opportunities.append(
             ArbitrageOpportunity(
@@ -83,6 +84,7 @@ def _calculate_unfiltered_opportunities(
                 bid_price=highest_bid.best_bid,
                 raw_spread_percent=round(raw_spread_percent, 4),
                 estimated_net_spread_percent=round(estimated_net_spread_percent, 4),
+                estimated_fee_percent=round(estimated_fee_percent, 4),
                 volume_24h_usd=min(
                     lowest_ask.volume_24h_usd,
                     highest_bid.volume_24h_usd,
