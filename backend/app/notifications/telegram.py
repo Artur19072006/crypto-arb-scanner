@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Awaitable, Callable
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from app.domain.models import (
@@ -74,7 +74,7 @@ class TelegramNotifier:
             payload = {
                 "chat_id": chat_id,
                 "text": message,
-                "parse_mode": config.parse_mode,
+                "parse_mode": "HTML",
                 "disable_web_page_preview": "true",
             }
             try:
@@ -123,30 +123,28 @@ class TelegramNotifier:
 
 def format_alert_message(alert: AlertCandidate) -> str:
     lines = [
-        f"<b>Arbitrage Alert: {escape(alert.symbol)}</b>",
+        f"<b>{escape(alert.symbol)}</b>",
         "",
-        f"Long: {escape(alert.long_exchange)}",
-        f"Short: {escape(alert.short_exchange)}",
+        f"{_exchange_link(alert.long_exchange, alert.symbol)} - <b>LONG</b>",
+        f"{_exchange_link(alert.short_exchange, alert.symbol)} - <b>SHORT</b>",
         "",
-        f"Raw spread: {_format_percent(alert.raw_spread_percent)}",
-        f"Net spread: {_format_percent(alert.estimated_net_spread_percent)}",
+        "<b>Spread</b>",
+        f"Raw: {_format_percent(alert.raw_spread_percent)}",
+        f"Net: {_format_percent(alert.estimated_net_spread_percent)}",
     ]
     if alert.depth_adjusted_net_spread_percent is not None:
-        lines.append(
-            "Depth-adjusted net: "
-            f"{_format_percent(alert.depth_adjusted_net_spread_percent)}"
-        )
+        lines.append(f"Depth net: {_format_percent(alert.depth_adjusted_net_spread_percent)}")
+
     if alert.depth_status:
-        depth_line = f"Depth: {escape(alert.depth_status)}"
+        lines.extend(["", "<b>Depth</b>", f"Status: {escape(alert.depth_status)}"])
         if alert.target_notional_usd is not None:
-            depth_line += f" for ${alert.target_notional_usd:,.0f}"
-        lines.append(depth_line)
+            lines.append(f"Size: ${alert.target_notional_usd:,.0f}")
     if (
         alert.long_slippage_percent is not None
         or alert.short_slippage_percent is not None
     ):
         lines.append(
-            "Slippage L/S: "
+            "Slippage: "
             f"{_format_optional_percent(alert.long_slippage_percent)} / "
             f"{_format_optional_percent(alert.short_slippage_percent)}"
         )
@@ -154,16 +152,55 @@ def format_alert_message(alert: AlertCandidate) -> str:
     lines.extend(
         [
             "",
-            f"Funding: {escape(alert.funding_impact)}",
+            f"Funding impact: {escape(alert.funding_impact)}",
             f"Severity: {escape(alert.severity)}",
             f"Timestamp: {alert.created_at.isoformat()}",
         ]
     )
     if alert.reasons:
-        lines.extend(["", "Reasons:"])
-        lines.extend(f"- {escape(reason)}" for reason in alert.reasons[:6])
+        reason_heading = "Reason:" if len(alert.reasons) == 1 else "Reasons:"
+        lines.extend(["", reason_heading])
+        lines.extend(f"- {escape(reason)}" for reason in alert.reasons[:4])
 
     return "\n".join(lines)
+
+
+def _exchange_link(exchange: str, symbol: str) -> str:
+    label = escape(exchange)
+    url = _exchange_trade_url(exchange, symbol)
+    if url is None:
+        return label
+
+    return f'<a href="{escape(url, quote=True)}">{label}</a>'
+
+
+def _exchange_trade_url(exchange: str, symbol: str) -> str | None:
+    normalized_exchange = exchange.strip().lower()
+    normalized_symbol = _trade_symbol(symbol)
+    if not normalized_symbol:
+        return None
+
+    if normalized_exchange == "binance":
+        return f"https://www.binance.com/en/futures/{quote(normalized_symbol)}"
+    if normalized_exchange == "bybit":
+        return f"https://www.bybit.com/trade/usdt/{quote(normalized_symbol)}"
+    if normalized_exchange == "okx":
+        okx_symbol = _okx_swap_symbol(normalized_symbol)
+        if okx_symbol is None:
+            return None
+        return f"https://www.okx.com/trade-swap/{quote(okx_symbol.lower())}"
+
+    return None
+
+
+def _trade_symbol(symbol: str) -> str:
+    return "".join(character for character in symbol.upper() if character.isalnum())
+
+
+def _okx_swap_symbol(symbol: str) -> str | None:
+    if not symbol.endswith("USDT") or len(symbol) <= 4:
+        return None
+    return f"{symbol[:-4]}-USDT-SWAP"
 
 
 def _stable_alert_key(alert: AlertCandidate) -> str:

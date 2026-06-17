@@ -53,9 +53,16 @@ class TelegramNotifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(url, "https://api.telegram.org/bottoken/sendMessage")
         self.assertEqual(payload["chat_id"], "chat")
         self.assertEqual(payload["parse_mode"], "HTML")
-        self.assertIn("Arbitrage Alert: SPACEUSDT", payload["text"])
-        self.assertIn("Long: Binance", payload["text"])
-        self.assertIn("Depth-adjusted net: 0.1400%", payload["text"])
+        self.assertIn("<b>SPACEUSDT</b>", payload["text"])
+        self.assertIn(
+            '<a href="https://www.binance.com/en/futures/SPACEUSDT">Binance</a> - <b>LONG</b>',
+            payload["text"],
+        )
+        self.assertIn(
+            '<a href="https://www.bybit.com/trade/usdt/SPACEUSDT">Bybit</a> - <b>SHORT</b>',
+            payload["text"],
+        )
+        self.assertIn("Depth net: 0.1400%", payload["text"])
         self.assertEqual(timeout, 10)
         self.assertEqual(status.sent_count, 1)
         self.assertIsNotNone(status.last_sent_at)
@@ -171,11 +178,38 @@ class TelegramNotifierTests(unittest.IsolatedAsyncioTestCase):
     def test_formats_alert_message_without_trade_commands(self) -> None:
         message = format_alert_message(_alert())
 
-        self.assertIn("Arbitrage Alert: SPACEUSDT", message)
-        self.assertIn("Raw spread: 0.4900%", message)
+        self.assertIn("<b>SPACEUSDT</b>", message)
+        self.assertIn("Raw: 0.4900%", message)
+        self.assertIn("Net: 0.2800%", message)
+        self.assertIn("Depth net: 0.1400%", message)
         self.assertIn("Severity: Strong", message)
         self.assertNotIn("buy", message.lower())
         self.assertNotIn("execute", message.lower())
+
+    def test_formats_exchange_links_when_supported(self) -> None:
+        message = format_alert_message(_alert(long_exchange="OKX", short_exchange="Unknown"))
+
+        self.assertIn(
+            '<a href="https://www.okx.com/trade-swap/space-usdt-swap">OKX</a> - <b>LONG</b>',
+            message,
+        )
+        self.assertIn("Unknown - <b>SHORT</b>", message)
+
+    def test_formats_alert_message_with_escaped_html(self) -> None:
+        message = format_alert_message(
+            _alert(
+                symbol="SPACE<USDT&",
+                long_exchange="Binance & Co",
+                short_exchange="Bybit <Main>",
+                reasons=["Depth <ok> & safe"],
+            )
+        )
+
+        self.assertIn("<b>SPACE&lt;USDT&amp;</b>", message)
+        self.assertIn("Binance &amp; Co - <b>LONG</b>", message)
+        self.assertIn("Bybit &lt;Main&gt; - <b>SHORT</b>", message)
+        self.assertIn("- Depth &lt;ok&gt; &amp; safe", message)
+        self.assertNotIn("<b>SPACE<USDT&</b>", message)
 
 
 class RecordingSender:
@@ -196,6 +230,7 @@ def _alert(
     symbol: str = "SPACEUSDT",
     long_exchange: str = "Binance",
     short_exchange: str = "Bybit",
+    reasons: list[str] | None = None,
 ) -> AlertCandidate:
     return AlertCandidate(
         id=alert_id,
@@ -214,7 +249,7 @@ def _alert(
         liquidity_status="OK",
         alert_score=12.5,
         severity="Strong",
-        reasons=[
+        reasons=reasons or [
             "Net spread above alert threshold",
             "Depth-adjusted spread remains positive",
             "Target notional fills on both sides",
