@@ -122,6 +122,11 @@ filters:
         self.assertEqual(config.alerts.min_volume_24h_usd, 400_000)
         self.assertEqual(config.alerts.cooldown_seconds, 300)
         self.assertEqual(config.alerts.max_alerts_per_scan, 5)
+        self.assertEqual(config.market_data.mode, "rest")
+        self.assertFalse(config.market_data.websocket.enabled)
+        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit"))
+        self.assertEqual(config.market_data.websocket.reconnect_seconds, 5)
+        self.assertEqual(config.market_data.websocket.stale_after_seconds, 20)
         self.assertFalse(config.telegram.enabled)
         self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
         self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
@@ -257,6 +262,37 @@ alerts:
         self.assertEqual(config.alerts.min_volume_24h_usd, 750_000)
         self.assertEqual(config.alerts.cooldown_seconds, 120)
         self.assertEqual(config.alerts.max_alerts_per_scan, 3)
+
+    def test_loads_market_data_websocket_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+market_data:
+  mode: websocket
+  websocket:
+    enabled: true
+    exchanges:
+      - binance
+      - bybit
+      - okx
+    reconnect_seconds: 7
+    stale_after_seconds: 15
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertEqual(config.market_data.mode, "websocket")
+        self.assertTrue(config.market_data.websocket.enabled)
+        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit"))
+        self.assertEqual(config.market_data.websocket.reconnect_seconds, 7)
+        self.assertEqual(config.market_data.websocket.stale_after_seconds, 15)
 
     def test_loads_telegram_config_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

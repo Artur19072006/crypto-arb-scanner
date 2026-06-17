@@ -23,6 +23,7 @@ from app.services.runtime import (
     opportunity_store,
     symbol_universe_builder,
     telegram_notifier,
+    websocket_market_data_manager,
 )
 from app.services.symbols import normalize_symbol
 from app.services.spread_engine import filter_opportunities
@@ -48,6 +49,16 @@ async def get_scanner_status() -> ScannerStatus:
     stored_opportunity_count = await opportunity_store.opportunity_count()
     symbol_selection = await symbol_universe_builder.get_last_selection()
     selected_symbols = _status_symbols(config, symbol_selection.symbols)
+    websocket_status = await websocket_market_data_manager.status()
+    websocket_enabled = _websocket_market_data_enabled(config)
+    stale_snapshot_count = (
+        await market_data_cache.stale_snapshot_count(
+            source="websocket",
+            stale_after_seconds=config.market_data.websocket.stale_after_seconds,
+        )
+        if websocket_enabled
+        else 0
+    )
     return ScannerStatus(
         data_source=", ".join(data_sources) if data_sources else "none",
         data_source_mode=config.data_source_mode,
@@ -61,6 +72,15 @@ async def get_scanner_status() -> ScannerStatus:
         stored_opportunity_count=stored_opportunity_count,
         enabled_exchanges=config.default_filters.exchanges,
         active_connectors=active_connector_names(),
+        market_data_mode=config.market_data.mode,
+        websocket_enabled=websocket_enabled,
+        websocket_active_exchanges=websocket_status.active_exchanges,
+        websocket_connected=websocket_status.connected,
+        stale_snapshot_count=stale_snapshot_count,
+        last_websocket_update_at=(
+            websocket_status.last_update_at
+            or await market_data_cache.last_update_at("websocket")
+        ),
         symbol_selection_mode=config.symbol_selection.mode,
         selected_symbol_count=len(selected_symbols),
         selected_symbols=selected_symbols[:20],
@@ -213,6 +233,14 @@ def _status_symbols(
             )
         )
     return ()
+
+
+def _websocket_market_data_enabled(config: AppConfig) -> bool:
+    return (
+        config.data_source_mode == "live"
+        and config.market_data.mode == "websocket"
+        and config.market_data.websocket.enabled
+    )
 
 
 def _filter_by_symbol_query(

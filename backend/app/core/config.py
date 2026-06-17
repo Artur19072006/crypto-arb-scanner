@@ -12,9 +12,11 @@ from app.domain.models import (
     DataSourceMode,
     DepthCheckConfig,
     ExchangeFees,
+    MarketDataConfig,
     ScannerFilters,
     SymbolSelectionConfig,
     TelegramDisplaySettings,
+    WebSocketMarketDataConfig,
 )
 
 
@@ -70,6 +72,7 @@ def load_app_config(
     )
     depth_check = _load_depth_check(raw_config.get("depth_check"))
     alerts = _load_alerts(raw_config.get("alerts"))
+    market_data = _load_market_data(raw_config.get("market_data"))
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
@@ -84,6 +87,7 @@ def load_app_config(
         depth_check=depth_check,
         alerts=alerts,
         telegram=telegram,
+        market_data=market_data,
         config_source=str(source_path) if source_path else "built-in defaults",
     )
 
@@ -266,6 +270,53 @@ def _load_alerts(raw_alerts: Any) -> AlertConfig:
         max_alerts_per_scan=max(
             1,
             int(raw_alerts.get("max_alerts_per_scan", defaults.max_alerts_per_scan)),
+        ),
+    )
+
+
+def _load_market_data(raw_market_data: Any) -> MarketDataConfig:
+    defaults = MarketDataConfig()
+    if not isinstance(raw_market_data, dict):
+        return defaults
+
+    raw_mode = str(raw_market_data.get("mode", defaults.mode)).lower().strip()
+    mode = "websocket" if raw_mode == "websocket" else "rest"
+    raw_websocket = raw_market_data.get("websocket")
+    websocket = _load_websocket_market_data(raw_websocket)
+
+    return MarketDataConfig(mode=mode, websocket=websocket)
+
+
+def _load_websocket_market_data(raw_websocket: Any) -> WebSocketMarketDataConfig:
+    defaults = WebSocketMarketDataConfig()
+    if not isinstance(raw_websocket, dict):
+        return defaults
+
+    exchanges = tuple(
+        dict.fromkeys(
+            exchange.lower().strip()
+            for exchange in _string_tuple(
+                raw_websocket.get("exchanges", defaults.exchanges)
+            )
+            if exchange.lower().strip() in {"binance", "bybit"}
+        )
+    )
+
+    return WebSocketMarketDataConfig(
+        enabled=bool(raw_websocket.get("enabled", defaults.enabled)),
+        exchanges=exchanges or defaults.exchanges,
+        reconnect_seconds=max(
+            1,
+            int(raw_websocket.get("reconnect_seconds", defaults.reconnect_seconds)),
+        ),
+        stale_after_seconds=max(
+            1,
+            int(
+                raw_websocket.get(
+                    "stale_after_seconds",
+                    defaults.stale_after_seconds,
+                )
+            ),
         ),
     )
 

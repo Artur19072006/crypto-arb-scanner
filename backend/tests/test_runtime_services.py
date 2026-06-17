@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.domain.models import ArbitrageOpportunity, MarketSnapshot
 from app.services.market_data_cache import MarketDataCache
@@ -26,6 +26,86 @@ class MarketDataCacheTests(unittest.IsolatedAsyncioTestCase):
             {("Binance", 105.0), ("Bybit", 102.0)},
         )
 
+    async def test_preferred_snapshots_use_fresh_websocket_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+        await cache.update_snapshots([
+            _snapshot(
+                "Binance",
+                "BTCUSDT",
+                bid=100.0,
+                ask=101.0,
+                volume_24h_usd=2_000_000,
+                funding_rate_percent=0.02,
+                timestamp=checked_at - timedelta(seconds=3),
+                source="rest",
+            ),
+            _snapshot(
+                "Binance",
+                "BTCUSDT",
+                bid=105.0,
+                ask=106.0,
+                volume_24h_usd=0,
+                funding_rate_percent=0,
+                timestamp=checked_at,
+                source="websocket",
+            ),
+        ])
+
+        snapshots = await cache.get_preferred_snapshots(
+            preferred_source="websocket",
+            stale_after_seconds=20,
+            checked_at=checked_at,
+        )
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].best_bid, 105.0)
+        self.assertEqual(snapshots[0].best_ask, 106.0)
+        self.assertEqual(snapshots[0].volume_24h_usd, 2_000_000)
+        self.assertEqual(snapshots[0].funding_rate_percent, 0.02)
+        self.assertEqual(snapshots[0].source, "websocket")
+
+    async def test_preferred_snapshots_fall_back_to_rest_when_websocket_is_stale(self) -> None:
+        cache = MarketDataCache()
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+        await cache.update_snapshots([
+            _snapshot(
+                "Binance",
+                "BTCUSDT",
+                bid=100.0,
+                ask=101.0,
+                timestamp=checked_at,
+                source="rest",
+            ),
+            _snapshot(
+                "Binance",
+                "BTCUSDT",
+                bid=105.0,
+                ask=106.0,
+                timestamp=checked_at - timedelta(seconds=30),
+                source="websocket",
+            ),
+        ])
+
+        snapshots = await cache.get_preferred_snapshots(
+            preferred_source="websocket",
+            stale_after_seconds=20,
+            checked_at=checked_at,
+        )
+
+        self.assertEqual(snapshots[0].best_bid, 100.0)
+        self.assertEqual(snapshots[0].source, "rest")
+        self.assertEqual(
+            await cache.stale_snapshot_count(
+                source="websocket",
+                stale_after_seconds=20,
+                checked_at=checked_at,
+            ),
+            1,
+        )
+
 
 class OpportunityStoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_opportunities_replaces_list_and_sets_timestamp(self) -> None:
@@ -50,7 +130,16 @@ class OpportunityStoreTests(unittest.IsolatedAsyncioTestCase):
         ])
 
 
-def _snapshot(exchange: str, symbol: str, bid: float, ask: float) -> MarketSnapshot:
+def _snapshot(
+    exchange: str,
+    symbol: str,
+    bid: float,
+    ask: float,
+    volume_24h_usd: float = 1_000_000,
+    funding_rate_percent: float = 0.01,
+    timestamp: datetime | None = None,
+    source: str = "rest",
+) -> MarketSnapshot:
     return MarketSnapshot(
         exchange=exchange,
         symbol=symbol,
@@ -58,10 +147,11 @@ def _snapshot(exchange: str, symbol: str, bid: float, ask: float) -> MarketSnaps
         best_bid_size=10.0,
         best_ask=ask,
         best_ask_size=10.0,
-        volume_24h_usd=1_000_000,
-        funding_rate_percent=0.01,
+        volume_24h_usd=volume_24h_usd,
+        funding_rate_percent=funding_rate_percent,
         next_funding_time=None,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(timezone.utc),
+        source=source,
     )
 
 

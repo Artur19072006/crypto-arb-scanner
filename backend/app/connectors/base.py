@@ -26,5 +26,4 @@ class ExchangeConnector(ABC):
         """Return a public REST order book snapshot when the connector supports it."""
         raise NotImplementedError(f"{self.name} does not support public order books")
 
-    # TODO: Add an async streaming interface for real exchange WebSocket feeds.
-    # TODO: Add reconnect/backoff and per-exchange subscription management later.
+    # Public WebSocket top-of-book connectors live separately from REST connectors.

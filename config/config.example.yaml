@@ -25,6 +25,16 @@ symbol_selection:
     - BTCUSDT
     - ETHUSDT
 
+market_data:
+  mode: rest
+  websocket:
+    enabled: false
+    exchanges:
+      - binance
+      - bybit
+    reconnect_seconds: 5
+    stale_after_seconds: 20
+
 fees:
   Binance:
     maker_percent: 0.02

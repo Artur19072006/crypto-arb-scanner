@@ -193,6 +193,14 @@ function App() {
           <strong>{formatModeLabel(scannerStatus?.mode)}</strong>
         </div>
         <div>
+          <span className="metric-label">Market data</span>
+          <strong>{formatMarketDataMode(scannerStatus?.market_data_mode)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">WebSocket</span>
+          <strong>{formatWebSocketStatus(scannerStatus)}</strong>
+        </div>
+        <div>
           <span className="metric-label">Symbol mode</span>
           <strong>{formatSymbolSelectionMode(scannerStatus?.symbol_selection_mode)}</strong>
         </div>
@@ -715,6 +723,37 @@ function formatModeLabel(mode) {
   }
 
   return "-";
+}
+
+function formatMarketDataMode(mode) {
+  if (mode === "websocket") {
+    return "WebSocket";
+  }
+  if (mode === "rest") {
+    return "REST";
+  }
+
+  return "-";
+}
+
+function formatWebSocketStatus(scannerStatus) {
+  if (!scannerStatus?.websocket_enabled) {
+    return "Off";
+  }
+
+  const connected = scannerStatus.websocket_connected ?? {};
+  const activeExchanges = Array.isArray(scannerStatus.websocket_active_exchanges)
+    ? scannerStatus.websocket_active_exchanges
+    : [];
+  if (!activeExchanges.length) {
+    return "Starting";
+  }
+
+  const connectedCount = activeExchanges.filter((exchange) => connected[exchange]).length;
+  const staleCount = Number(scannerStatus.stale_snapshot_count) || 0;
+  return staleCount > 0
+    ? `${connectedCount}/${activeExchanges.length} · ${staleCount} stale`
+    : `${connectedCount}/${activeExchanges.length}`;
 }
 
 function formatSymbolSelectionMode(mode) {

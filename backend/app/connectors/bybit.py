@@ -232,8 +232,7 @@ class BybitPublicConnector(ExchangeConnector):
             raise ValueError("Bybit response result must be an object")
         return result
 
-    # TODO: Add Bybit V5 WebSocket ticker/orderbook streaming support later.
-    # TODO: Keep Bybit live support public-market-data only; no private streams/API keys.
+    # Public WebSocket top-of-book support lives in app.connectors.websocket.
 
 
 def _datetime_from_millis(value: object) -> datetime | None:

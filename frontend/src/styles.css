@@ -98,7 +98,7 @@ h1 {
 
 .metrics-band {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   border: 1px solid #d6dccf;

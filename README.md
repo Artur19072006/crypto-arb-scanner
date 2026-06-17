@@ -219,7 +219,34 @@ symbol_selection:
     - ETHUSDT
 ```
 
-Restart the backend after changing config. Live mode uses public REST market data only.
+Restart the backend after changing config. Live mode uses public REST market data by default.
+
+## Market Data Mode
+
+REST polling remains the default and safest mode:
+
+```yaml
+market_data:
+  mode: rest
+  websocket:
+    enabled: false
+```
+
+To test public WebSocket top-of-book updates for Binance and Bybit, keep `data_source_mode: live` and enable:
+
+```yaml
+market_data:
+  mode: websocket
+  websocket:
+    enabled: true
+    exchanges:
+      - binance
+      - bybit
+    reconnect_seconds: 5
+    stale_after_seconds: 20
+```
+
+WebSocket mode still uses REST for symbol selection, funding context, depth checks, OKX live data, and fallback when a WebSocket snapshot is missing or stale.
 
 ## Optional Depth Check
 

@@ -289,8 +289,7 @@ class BinancePublicConnector(ExchangeConnector):
         with urlopen(request, timeout=self.timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    # TODO: Add Binance USD-M Futures WebSocket ticker/book stream support later.
-    # TODO: Keep WebSocket support public-market-data only; no private streams/API keys.
+    # Public WebSocket top-of-book support lives in app.connectors.websocket.
 
 
 def _datetime_from_millis(value: object) -> datetime | None:

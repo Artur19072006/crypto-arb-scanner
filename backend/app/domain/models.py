@@ -8,6 +8,7 @@ LiquidityStatus = Literal["OK", "Thin", "Holey"]
 DepthStatus = Literal["OK", "Thin", "Insufficient", "Unknown"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
+MarketDataMode = Literal["rest", "websocket"]
 SymbolSelectionMode = Literal["manual", "auto"]
 AlertSeverity = Literal["Info", "Watch", "Strong"]
 TelegramParseMode = Literal["HTML", "Markdown", "MarkdownV2"]
@@ -32,6 +33,7 @@ class MarketSnapshot(BaseModel):
     funding_rate_percent: float
     next_funding_time: datetime | None
     timestamp: datetime
+    source: str = "rest"
 
 
 class MarketSymbol(BaseModel):
@@ -181,6 +183,20 @@ class TelegramDisplaySettings(BaseModel):
     timeout_seconds: int = Field(default=10, ge=1)
 
 
+class WebSocketMarketDataConfig(BaseModel):
+    enabled: bool = False
+    exchanges: tuple[str, ...] = ("binance", "bybit")
+    reconnect_seconds: int = Field(default=5, ge=1)
+    stale_after_seconds: int = Field(default=20, ge=1)
+
+
+class MarketDataConfig(BaseModel):
+    mode: MarketDataMode = "rest"
+    websocket: WebSocketMarketDataConfig = Field(
+        default_factory=WebSocketMarketDataConfig
+    )
+
+
 class SymbolSelectionConfig(BaseModel):
     mode: SymbolSelectionMode = "manual"
     min_volume_24h_usd: float | None = Field(default=None, ge=0)
@@ -235,6 +251,7 @@ class AppConfig(BaseModel):
     depth_check: DepthCheckConfig = Field(default_factory=DepthCheckConfig)
     alerts: AlertConfig = Field(default_factory=AlertConfig)
     telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
+    market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
     config_source: str
 
 
@@ -251,6 +268,12 @@ class ScannerStatus(BaseModel):
     stored_opportunity_count: int = Field(ge=0)
     enabled_exchanges: tuple[str, ...]
     active_connectors: tuple[str, ...]
+    market_data_mode: MarketDataMode = "rest"
+    websocket_enabled: bool = False
+    websocket_active_exchanges: tuple[str, ...] = ()
+    websocket_connected: dict[str, bool] = Field(default_factory=dict)
+    stale_snapshot_count: int = Field(default=0, ge=0)
+    last_websocket_update_at: datetime | None = None
     symbol_selection_mode: SymbolSelectionMode
     selected_symbol_count: int = Field(ge=0)
     selected_symbols: tuple[str, ...] = ()
