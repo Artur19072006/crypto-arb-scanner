@@ -2,7 +2,7 @@
 
 Local-first scanner skeleton for USDT perpetual futures arbitrage opportunities.
 
-This version defaults to mock bid/ask data. Optional live mode uses Binance, Bybit, and OKX public market-data endpoints only. It does not place trades, use exchange API keys, or call private/account endpoints. Telegram notifications are optional and only send Alert Engine candidates.
+This version defaults to mock bid/ask data. Optional live mode uses Binance, Bybit, OKX, and Bitget public market-data endpoints only. It does not place trades, use exchange API keys, or call private/account endpoints. Telegram notifications are optional and only send Alert Engine candidates.
 
 ## Current Scope
 
@@ -12,7 +12,7 @@ This version defaults to mock bid/ask data. Optional live mode uses Binance, Byb
 - SQLite-ready folder and database placeholder
 - Config example for fees, filters, blacklist, alert rules, and Telegram settings
 - Optional Telegram notifier for active Alert Engine candidates
-- Connector registry with fake connector in mock mode and optional Binance/Bybit/OKX public connectors in live mode
+- Connector registry with fake connector in mock mode and optional Binance/Bybit/OKX/Bitget public connectors in live mode
 - Optional public REST order book depth validation for top opportunities
 - Internal Alert Engine v1 for selecting notification-worthy opportunities without sending messages
 
@@ -134,7 +134,7 @@ Telegram settings use environment variable names only. Do not commit real bot to
 
 The backend reads `config/config.yaml` when it exists. If it does not exist, it falls back to `config/config.example.yaml`, then to built-in safe defaults.
 
-`data_source_mode` defaults to `mock`. Live mode currently supports Binance, Bybit, and OKX public market-data connectors.
+`data_source_mode` defaults to `mock`. Live mode currently supports Binance, Bybit, OKX, and Bitget public market-data connectors.
 `depth_check.enabled` defaults to `false`, so the scanner avoids extra REST calls unless you explicitly enable depth validation.
 `alerts.enabled` defaults to `false`, so no alert candidates are generated unless you explicitly enable the internal alert engine.
 
@@ -155,10 +155,10 @@ http://127.0.0.1:8000/api/status
 - `ExchangeConnector` defines `name`, `data_source`, and `fetch_snapshots()`.
 - `ConnectorRegistry` registers available connectors.
 - Current active mock connector: `FakeExchangeConnector`.
-- Optional live connectors: `BinancePublicConnector`, `BybitPublicConnector`, and `OKXPublicConnector` for public REST market data.
-- Future real connectors such as Bitget, Gate, and KuCoin should be registered through the registry after they exist.
+- Optional live connectors: `BinancePublicConnector`, `BybitPublicConnector`, `OKXPublicConnector`, and `BitgetPublicConnector` for public REST market data.
+- Future real connectors such as Gate and KuCoin should be registered through the registry after they exist.
 - Symbol normalization currently supports mock symbols such as `BTCUSDT`, `ETHUSDT`, and `SOLUSDT`.
-- Exchange format examples: Binance `BTCUSDT`, Bybit `BTCUSDT`, OKX `BTC-USDT-SWAP`, Gate `BTC_USDT`.
+- Exchange format examples: Binance `BTCUSDT`, Bybit `BTCUSDT`, OKX `BTC-USDT-SWAP`, Bitget `BTCUSDT`, Gate `BTC_USDT`.
 
 Private/account endpoints, exchange API keys, order execution, and automatic trading are intentionally not implemented.
 
@@ -199,7 +199,7 @@ symbol_selection:
     - ETHUSDT
 ```
 
-To include OKX public USDT swaps as a third scanner source:
+To include OKX and Bitget public USDT swaps as additional scanner sources:
 
 ```yaml
 data_source_mode: live
@@ -207,6 +207,7 @@ enabled_connectors:
   - binance
   - bybit
   - okx
+  - bitget
 symbol_selection:
   mode: auto
   min_volume_24h_usd: 400000
@@ -379,6 +380,13 @@ OKX public endpoints:
 - Swap order book depth: `/api/v5/market/books`
 - Funding context: `/api/v5/public/funding-rate`
 
+Bitget public futures endpoints:
+
+- Contract metadata: `/api/v2/mix/market/contracts?productType=USDT-FUTURES`
+- Futures ticker bid/ask, 24h volume, and funding context: `/api/v2/mix/market/tickers?productType=USDT-FUTURES`
+- Futures order book depth: `/api/v2/mix/market/merge-depth`
+- Funding context: `/api/v2/mix/market/current-fund-rate`
+
 With only one live connector active, cross-exchange arbitrage opportunities will usually be empty because the spread engine needs at least two exchanges for the same symbol.
 
 ## Development Notes
@@ -389,4 +397,4 @@ With only one live connector active, cross-exchange arbitrage opportunities will
 - Raw spread is `(highest_bid - lowest_ask) / lowest_ask * 100`.
 - Net spread currently uses a conservative mock taker-fee estimate.
 - Depth-adjusted spread is an optional public-book estimate for a configured notional, not execution logic.
-- Additional real exchange market-data connectors should be added later, starting with Bitget.
+- Additional real exchange market-data connectors such as Gate and KuCoin should be added later.

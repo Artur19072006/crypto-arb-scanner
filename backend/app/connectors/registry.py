@@ -1,4 +1,5 @@
 from app.connectors.base import ExchangeConnector
+from app.connectors.bitget import BitgetPublicConnector
 from app.connectors.binance import BinancePublicConnector
 from app.connectors.bybit import BybitPublicConnector
 from app.connectors.fake import FakeExchangeConnector
@@ -63,7 +64,15 @@ def build_connector_registry(
             )
         )
 
-    # TODO: Register Bitget, Gate, and KuCoin public connectors here later.
+    if data_source_mode == "live" and "bitget" in enabled:
+        registry.register(
+            BitgetPublicConnector(
+                symbol_allowlist=symbol_allowlist,
+                max_symbols=max_symbols,
+            )
+        )
+
+    # TODO: Register Gate and KuCoin public connectors here later.
     return registry
 
 

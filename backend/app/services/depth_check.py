@@ -28,6 +28,7 @@ CONNECTOR_EXCHANGE_NAMES = {
     "binance": "Binance",
     "bybit": "Bybit",
     "okx": "OKX",
+    "bitget": "Bitget",
 }
 
 

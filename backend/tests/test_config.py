@@ -165,6 +165,30 @@ symbol_allowlist:
         self.assertEqual(config.symbol_allowlist, ("BTCUSDT", "ETHUSDT"))
         self.assertEqual(config.symbol_selection.mode, "manual")
 
+    def test_live_config_can_enable_bitget_public_rest_connector(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+data_source_mode: live
+enabled_connectors:
+  - bybit
+  - bitget
+symbol_allowlist:
+  - BTCUSDT
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertEqual(config.data_source_mode, "live")
+        self.assertEqual(config.enabled_connectors, ("bybit", "bitget"))
+
     def test_loads_symbol_selection_auto_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -281,6 +305,7 @@ market_data:
       - binance
       - bybit
       - okx
+      - bitget
     reconnect_seconds: 7
     stale_after_seconds: 15
     max_symbols_per_connection: 25

@@ -76,6 +76,27 @@ class SymbolUniverseBuilderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(selection.symbols_by_connector["bybit"], ("BTCUSDT", "ETHUSDT"))
         self.assertEqual(selection.symbols_by_connector["okx"], ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
 
+    async def test_auto_selection_does_not_force_symbols_to_exist_on_binance(self) -> None:
+        selection = await _build_selection(
+            binance_markets=[],
+            bybit_markets=[
+                _market("Bybit", "XRPUSDT", 4_000_000),
+                _market("Bybit", "DOGEUSDT", 3_000_000),
+            ],
+            okx_markets=[
+                _market("OKX", "DOGEUSDT", 3_500_000),
+            ],
+            bitget_markets=[
+                _market("Bitget", "XRPUSDT", 5_000_000),
+            ],
+            config=_config(min_volume_24h_usd=0),
+        )
+
+        self.assertEqual(selection.symbols, ("XRPUSDT", "DOGEUSDT"))
+        self.assertEqual(selection.symbols_by_connector["bybit"], ("XRPUSDT", "DOGEUSDT"))
+        self.assertEqual(selection.symbols_by_connector["bitget"], ("XRPUSDT",))
+        self.assertEqual(selection.symbols_by_connector["okx"], ("DOGEUSDT",))
+
     async def test_auto_applies_min_and_max_volume_filters(self) -> None:
         selection = await _build_selection(
             binance_markets=[
@@ -182,12 +203,15 @@ async def _build_selection(
     bybit_markets: list[MarketSymbol],
     config: AppConfig,
     okx_markets: list[MarketSymbol] | None = None,
+    bitget_markets: list[MarketSymbol] | None = None,
 ):
     registry = ConnectorRegistry()
     registry.register(StaticSymbolConnector("binance", "Binance", binance_markets))
     registry.register(StaticSymbolConnector("bybit", "Bybit", bybit_markets))
     if okx_markets is not None:
         registry.register(StaticSymbolConnector("okx", "OKX", okx_markets))
+    if bitget_markets is not None:
+        registry.register(StaticSymbolConnector("bitget", "Bitget", bitget_markets))
     builder = SymbolUniverseBuilder()
     return await builder.build(config, registry)
 
@@ -222,9 +246,10 @@ def _config(
             "Binance": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
             "Bybit": ExchangeFees(maker_percent=0.02, taker_percent=0.055),
             "OKX": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
+            "Bitget": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
         },
-        default_filters=ScannerFilters(exchanges=("Binance", "Bybit", "OKX")),
-        supported_exchanges=("Binance", "Bybit", "OKX"),
+        default_filters=ScannerFilters(exchanges=("Binance", "Bybit", "OKX", "Bitget")),
+        supported_exchanges=("Binance", "Bybit", "OKX", "Bitget"),
         telegram=TelegramDisplaySettings(),
         config_source="test",
     )

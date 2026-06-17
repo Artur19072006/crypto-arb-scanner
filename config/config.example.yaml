@@ -7,6 +7,7 @@ enabled_connectors:
 #   - binance
 #   - bybit
 #   - okx
+#   - bitget
 max_symbols: 3
 # Optional manual override when symbol_selection.mode is manual.
 symbol_allowlist:

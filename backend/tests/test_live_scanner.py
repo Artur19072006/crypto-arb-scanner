@@ -63,6 +63,35 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opportunities[0].ask_price, 100.0)
         self.assertEqual(opportunities[0].bid_price, 101.0)
 
+    async def test_rest_market_data_mode_can_use_bitget_snapshots(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            bitget_snapshot=_snapshot("Bitget", bid=98.0, ask=99.0),
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="rest",
+                websocket_enabled=False,
+                include_bitget=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Bitget")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
     async def test_websocket_mode_prefers_fresh_websocket_top_of_book(self) -> None:
         cache = MarketDataCache()
         store = OpportunityStore()
@@ -246,6 +275,7 @@ def _live_registry(
     binance_snapshot: MarketSnapshot,
     bybit_snapshot: MarketSnapshot,
     okx_snapshot: MarketSnapshot | None = None,
+    bitget_snapshot: MarketSnapshot | None = None,
 ):
     from app.connectors.registry import ConnectorRegistry
 
@@ -254,6 +284,8 @@ def _live_registry(
     registry.register(StaticSnapshotConnector("bybit", bybit_snapshot))
     if okx_snapshot is not None:
         registry.register(StaticSnapshotConnector("okx", okx_snapshot))
+    if bitget_snapshot is not None:
+        registry.register(StaticSnapshotConnector("bitget", bitget_snapshot))
     return registry
 
 
@@ -261,6 +293,7 @@ def _live_config(
     market_data_mode: str,
     websocket_enabled: bool,
     include_okx: bool = False,
+    include_bitget: bool = False,
 ):
     connectors = ["binance", "bybit"]
     exchanges = ["Binance", "Bybit"]
@@ -269,6 +302,9 @@ def _live_config(
         connectors.append("okx")
         exchanges.append("OKX")
         websocket_exchanges.append("okx")
+    if include_bitget:
+        connectors.append("bitget")
+        exchanges.append("Bitget")
 
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)

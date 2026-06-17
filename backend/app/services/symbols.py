@@ -25,6 +25,7 @@ def symbol_format_examples() -> dict[str, str]:
         "Binance": "BTCUSDT",
         "Bybit": "BTCUSDT",
         "OKX": "BTC-USDT-SWAP",
+        "Bitget": "BTCUSDT",
         "Gate": "BTC_USDT",
     }
 
@@ -33,4 +34,5 @@ def symbol_format_examples() -> dict[str, str]:
 # Binance USDT perpetual: BTCUSDT
 # Bybit USDT perpetual: BTCUSDT
 # OKX USDT perpetual swap: BTC-USDT-SWAP
+# Bitget USDT perpetual: BTCUSDT
 # Gate USDT perpetual: BTC_USDT

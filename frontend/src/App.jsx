@@ -841,7 +841,8 @@ function formatOptionalPercent(value) {
 const CONNECTOR_EXCHANGE_NAMES = {
   binance: "Binance",
   bybit: "Bybit",
-  okx: "OKX"
+  okx: "OKX",
+  bitget: "Bitget"
 };
 
 const SORT_BY_OPTIONS = new Set([
