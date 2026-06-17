@@ -143,7 +143,6 @@ function App() {
     ?? opportunities.length;
   const returnedOpportunityCount = opportunityMeta?.returned_count
     ?? opportunities.length;
-  const depthCheckNote = formatDepthCheckNote(settings?.depth_check);
 
   function applyFilters() {
     const normalizedFilters = normalizeFilters(draftFilters);
@@ -181,8 +180,8 @@ function App() {
       <main className="app-shell">
         <header className="top-bar">
           <div>
-            <p className="eyebrow">Spread history</p>
-            <h1>{historySelection.symbol} - {historySelection.longExchange} vs {historySelection.shortExchange}</h1>
+            <p className="eyebrow">SigmaScanner history</p>
+            <h1 className="history-title">{historySelection.symbol} - {historySelection.longExchange} vs {historySelection.shortExchange}</h1>
           </div>
           <button
             type="button"
@@ -202,12 +201,24 @@ function App() {
     <main className="app-shell">
       <header className="top-bar">
         <div>
-          <p className="eyebrow">Local scanner</p>
-          <h1>Perpetual Futures Arbitrage</h1>
+          <p className="eyebrow">Perpetual futures arbitrage</p>
+          <h1 className="brand-title">SigmaScanner</h1>
         </div>
-        <div className="status-panel">
-          <span className={`status-dot status-${requestStatus}`} aria-hidden="true" />
-          <span>{requestStatus === "ready" ? formatModeLabel(scannerStatus?.mode) : requestStatus}</span>
+        <div className="top-status-group">
+          <div className="status-panel">
+            <span className={`status-dot status-${requestStatus}`} aria-hidden="true" />
+            <span>{requestStatus === "ready" ? formatModeLabel(scannerStatus?.mode) : requestStatus}</span>
+          </div>
+          <div className="compact-status-chips" aria-label="Alerts and Telegram status">
+            <span className="compact-status-chip">
+              <span>Alerts</span>
+              <strong>{formatAlertStatusLabel(alertStatus)} / {alertStatus?.active_alert_count ?? 0}</strong>
+            </span>
+            <span className={`compact-status-chip ${telegramStatus?.last_error ? "chip-error" : ""}`}>
+              <span>Telegram</span>
+              <strong>{formatTelegramStatusLabel(telegramStatus)} / {telegramStatus?.sent_count ?? 0}</strong>
+            </span>
+          </div>
         </div>
       </header>
 
@@ -257,26 +268,6 @@ function App() {
           <strong>{formatConnectors(scannerStatus?.active_connectors)}</strong>
         </div>
       </section>
-
-      {Array.isArray(scannerStatus?.selected_symbols) && scannerStatus.selected_symbols.length > 0 && (
-        <section className="symbol-preview" aria-label="Selected symbols preview">
-          <span className="metric-label">Preview</span>
-          <strong>{formatSymbolsPreview(scannerStatus.selected_symbols)}</strong>
-        </section>
-      )}
-
-      {depthCheckNote && (
-        <section className="depth-note" aria-label="Depth check status">
-          <span className="metric-label">Depth</span>
-          <strong>{depthCheckNote}</strong>
-        </section>
-      )}
-
-      <AlertsPanel
-        alertStatus={alertStatus}
-        telegramStatus={telegramStatus}
-        alerts={alerts}
-      />
 
       <FilterControls
         filters={draftFilters}
@@ -534,8 +525,9 @@ function OpportunitiesTable({
           <thead>
             <tr>
               <th>Pair</th>
-              <th>Long</th>
-              <th>Short</th>
+              <th className="history-column">History</th>
+              <th>Long / Buy</th>
+              <th>Short / Sell</th>
               <th>Ask</th>
               <th>Bid</th>
               <th>Raw spread</th>
@@ -546,13 +538,25 @@ function OpportunitiesTable({
               <th>Funding</th>
               <th>Liquidity</th>
               {hasDepthData && <th>Depth</th>}
-              <th>History</th>
             </tr>
           </thead>
           <tbody>
             {opportunities.map((opportunity) => (
               <tr key={`${opportunity.symbol}-${opportunity.long_exchange}-${opportunity.short_exchange}`}>
                 <td className="symbol-cell">{opportunity.symbol}</td>
+                <td className="history-cell">
+                  <button
+                    type="button"
+                    className="history-chip"
+                    onClick={() => onOpenHistory({
+                      symbol: opportunity.symbol,
+                      longExchange: opportunity.long_exchange,
+                      shortExchange: opportunity.short_exchange
+                    })}
+                  >
+                    Open
+                  </button>
+                </td>
                 <td>{opportunity.long_exchange}</td>
                 <td>{opportunity.short_exchange}</td>
                 <td>{formatUsd(opportunity.ask_price, 4)}</td>
@@ -585,19 +589,6 @@ function OpportunitiesTable({
                     )}
                   </td>
                 )}
-                <td>
-                  <button
-                    type="button"
-                    className="table-action-button"
-                    onClick={() => onOpenHistory({
-                      symbol: opportunity.symbol,
-                      longExchange: opportunity.long_exchange,
-                      shortExchange: opportunity.short_exchange
-                    })}
-                  >
-                    History
-                  </button>
-                </td>
               </tr>
             ))}
             {!opportunities.length && (
