@@ -134,7 +134,7 @@ filters:
         self.assertFalse(config.market_data.websocket.enabled)
         self.assertEqual(
             config.market_data.websocket.exchanges,
-            ("binance", "bybit", "okx", "bitget"),
+            ("binance", "bybit", "okx", "bitget", "gate"),
         )
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 5)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 20)
@@ -337,6 +337,7 @@ market_data:
       - bybit
       - okx
       - bitget
+      - gate
     reconnect_seconds: 7
     stale_after_seconds: 15
     max_symbols_per_connection: 25
@@ -355,7 +356,7 @@ market_data:
         self.assertTrue(config.market_data.websocket.enabled)
         self.assertEqual(
             config.market_data.websocket.exchanges,
-            ("binance", "bybit", "okx", "bitget"),
+            ("binance", "bybit", "okx", "bitget", "gate"),
         )
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 7)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 15)

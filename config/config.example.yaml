@@ -36,6 +36,7 @@ market_data:
       - bybit
       - okx
       - bitget
+      - gate
     reconnect_seconds: 5
     stale_after_seconds: 20
     max_symbols_per_connection: 50

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
@@ -324,6 +325,79 @@ class BitgetTickerWebSocketConnector(PublicWebSocketConnector):
         ]
 
 
+class GateBookTickerWebSocketConnector(PublicWebSocketConnector):
+    name = "gate"
+    exchange_name = "Gate"
+    data_source = "gate_public_websocket"
+
+    def __init__(
+        self,
+        reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
+        base_url: str = "wss://fx-ws.gateio.ws/v4/ws/usdt",
+    ) -> None:
+        super().__init__(
+            reconnect_seconds=reconnect_seconds,
+            max_reconnect_attempts=max_reconnect_attempts,
+        )
+        self.base_url = base_url
+
+    async def listen(
+        self,
+        symbols: tuple[str, ...],
+        on_snapshot: SnapshotHandler,
+        on_connection_status: ConnectionStatusHandler,
+        stop_event: asyncio.Event,
+    ) -> None:
+        subscription_payload = self._subscription_payload(symbols)
+        if not subscription_payload:
+            await on_connection_status(self.name, False, "No Gate WebSocket symbols selected")
+            return
+
+        reconnect_attempts = 0
+        while not stop_event.is_set():
+            try:
+                async with websockets.connect(self.base_url) as websocket:
+                    reconnect_attempts = 0
+                    subscribe_message = json.dumps(
+                        {
+                            "time": int(time.time()),
+                            "channel": "futures.book_ticker",
+                            "event": "subscribe",
+                            "payload": list(subscription_payload),
+                        }
+                    )
+                    await websocket.send(subscribe_message)
+                    await on_connection_status(self.name, True, None)
+                    last_ping_at = datetime.now(timezone.utc)
+                    while not stop_event.is_set():
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1)
+                        except TimeoutError:
+                            now = datetime.now(timezone.utc)
+                            if (now - last_ping_at).total_seconds() >= 20:
+                                await websocket.send(_gate_ping_message())
+                                last_ping_at = now
+                            continue
+
+                        snapshot = parse_gate_book_ticker_message(message)
+                        if snapshot is not None:
+                            await on_snapshot(snapshot)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                reconnect_attempts += 1
+                await on_connection_status(self.name, False, str(exc))
+                if not self.can_reconnect(reconnect_attempts):
+                    break
+                await _sleep_until_stop(stop_event, self.reconnect_seconds)
+
+        await on_connection_status(self.name, False, None)
+
+    def _subscription_payload(self, symbols: tuple[str, ...]) -> tuple[str, ...]:
+        return _gate_contracts(symbols)
+
+
 def parse_binance_book_ticker_message(message: str | bytes) -> MarketSnapshot | None:
     payload = _json_message(message)
     if not isinstance(payload, dict):
@@ -532,6 +606,48 @@ def parse_bitget_ticker_message(message: str | bytes) -> MarketSnapshot | None:
     )
 
 
+def parse_gate_book_ticker_message(message: str | bytes) -> MarketSnapshot | None:
+    payload = _json_message(message)
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("channel") not in (None, "futures.book_ticker"):
+        return None
+    if payload.get("event") not in (None, "update"):
+        return None
+
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return None
+
+    symbol = normalize_symbol(str(result.get("s", "")), "Gate")
+    if not symbol.endswith("USDT") or len(symbol) <= 4:
+        return None
+
+    try:
+        best_bid = float(result["b"])
+        best_ask = float(result["a"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if best_bid <= 0 or best_ask <= 0:
+        return None
+
+    return MarketSnapshot(
+        exchange="Gate",
+        symbol=symbol,
+        best_bid=best_bid,
+        best_bid_size=_float_or_zero(result.get("B")),
+        best_ask=best_ask,
+        best_ask_size=_float_or_zero(result.get("A")),
+        volume_24h_usd=0,
+        funding_rate_percent=0,
+        next_funding_time=None,
+        timestamp=_datetime_from_millis(result.get("t") or payload.get("time_ms"))
+        or datetime.now(timezone.utc),
+        source="websocket",
+    )
+
+
 def build_public_websocket_connectors(
     exchanges: tuple[str, ...],
     reconnect_seconds: int,
@@ -563,6 +679,13 @@ def build_public_websocket_connectors(
     if "bitget" in enabled:
         connectors.append(
             BitgetTickerWebSocketConnector(
+                reconnect_seconds=reconnect_seconds,
+                max_reconnect_attempts=max_reconnect_attempts,
+            )
+        )
+    if "gate" in enabled:
+        connectors.append(
+            GateBookTickerWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
                 max_reconnect_attempts=max_reconnect_attempts,
             )
@@ -626,6 +749,23 @@ def _bitget_symbols(symbols: tuple[str, ...]) -> tuple[str, ...]:
     )
 
 
+def _gate_contracts(symbols: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            contract
+            for contract in (_gate_contract(raw_symbol) for raw_symbol in symbols)
+            if contract
+        )
+    )
+
+
+def _gate_contract(symbol: str) -> str:
+    normalized = normalize_symbol(symbol, "Gate")
+    if not normalized.endswith("USDT") or len(normalized) <= 4:
+        return ""
+    return f"{normalized[:-4]}_USDT"
+
+
 def _float_or_zero(value: object) -> float:
     if value in (None, ""):
         return 0.0
@@ -647,6 +787,17 @@ def _bitget_volume_24h_usd(ticker: dict[str, Any]) -> float:
     if usdt_volume > 0:
         return usdt_volume
     return _float_or_zero(ticker.get("quoteVolume"))
+
+
+def _gate_ping_message() -> str:
+    return json.dumps(
+        {
+            "time": int(time.time()),
+            "channel": "futures.ping",
+            "event": "",
+            "payload": [],
+        }
+    )
 
 
 async def _sleep_until_stop(stop_event: asyncio.Event, seconds: int) -> None:

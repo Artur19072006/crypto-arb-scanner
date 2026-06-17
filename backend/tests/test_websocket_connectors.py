@@ -5,10 +5,13 @@ from app.connectors.websocket import (
     BinanceBookTickerWebSocketConnector,
     BitgetTickerWebSocketConnector,
     BybitTickerWebSocketConnector,
+    GateBookTickerWebSocketConnector,
     OKXTickerWebSocketConnector,
+    build_public_websocket_connectors,
     parse_binance_book_ticker_message,
     parse_bitget_ticker_message,
     parse_bybit_ticker_message,
+    parse_gate_book_ticker_message,
     parse_okx_ticker_message,
 )
 
@@ -400,6 +403,124 @@ class WebSocketConnectorParsingTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_gate_book_ticker_message_maps_top_of_book_snapshot(self) -> None:
+        snapshot = parse_gate_book_ticker_message(
+            json.dumps(
+                {
+                    "time": 1615366379,
+                    "time_ms": 1615366379123,
+                    "channel": "futures.book_ticker",
+                    "event": "update",
+                    "result": {
+                        "t": 1615366379123,
+                        "u": 2517661076,
+                        "s": "BTC_USDT",
+                        "b": "54696.6",
+                        "B": "37000",
+                        "a": "54696.7",
+                        "A": "47061",
+                    },
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.exchange, "Gate")
+        self.assertEqual(snapshot.symbol, "BTCUSDT")
+        self.assertEqual(snapshot.best_bid, 54696.6)
+        self.assertEqual(snapshot.best_bid_size, 37000.0)
+        self.assertEqual(snapshot.best_ask, 54696.7)
+        self.assertEqual(snapshot.best_ask_size, 47061.0)
+        self.assertEqual(snapshot.volume_24h_usd, 0)
+        self.assertEqual(snapshot.funding_rate_percent, 0)
+        self.assertEqual(snapshot.source, "websocket")
+
+    def test_gate_book_ticker_message_normalizes_symbol(self) -> None:
+        snapshot = parse_gate_book_ticker_message(
+            json.dumps(
+                {
+                    "channel": "futures.book_ticker",
+                    "event": "update",
+                    "result": {
+                        "s": "ETH_USDT",
+                        "b": "3500.00",
+                        "B": "2.0",
+                        "a": "3501.00",
+                        "A": "3.0",
+                    },
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.symbol, "ETHUSDT")
+
+    def test_gate_book_ticker_ignores_empty_or_non_usdt_book_ticker(self) -> None:
+        self.assertIsNone(
+            parse_gate_book_ticker_message(
+                json.dumps(
+                    {
+                        "channel": "futures.book_ticker",
+                        "event": "update",
+                        "result": {
+                            "s": "BTC_USDT",
+                            "b": "",
+                            "B": "0",
+                            "a": "54696.7",
+                            "A": "47061",
+                        },
+                    }
+                )
+            )
+        )
+        self.assertIsNone(
+            parse_gate_book_ticker_message(
+                json.dumps(
+                    {
+                        "channel": "futures.book_ticker",
+                        "event": "update",
+                        "result": {
+                            "s": "BTC_USD",
+                            "b": "54696.6",
+                            "a": "54696.7",
+                        },
+                    }
+                )
+            )
+        )
+
+    def test_gate_subscription_ack_is_ignored(self) -> None:
+        snapshot = parse_gate_book_ticker_message(
+            json.dumps(
+                {
+                    "channel": "futures.book_ticker",
+                    "event": "subscribe",
+                    "result": {"status": "success"},
+                }
+            )
+        )
+
+        self.assertIsNone(snapshot)
+
+    def test_gate_subscription_payload_uses_public_futures_book_ticker_contracts(self) -> None:
+        connector = GateBookTickerWebSocketConnector()
+
+        self.assertEqual(
+            connector._subscription_payload(
+                ("btcusdt", "ETH_USDT", "BTCUSDC", "BTC_USDT_260327")
+            ),
+            ("BTC_USDT", "ETH_USDT"),
+        )
+
+    def test_build_public_websocket_connectors_includes_gate_when_enabled(self) -> None:
+        connectors = build_public_websocket_connectors(
+            ("gate",),
+            reconnect_seconds=5,
+        )
+
+        self.assertEqual([connector.name for connector in connectors], ["gate"])
+        self.assertIsInstance(connectors[0], GateBookTickerWebSocketConnector)
 
 
 if __name__ == "__main__":

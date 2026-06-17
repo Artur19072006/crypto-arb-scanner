@@ -352,7 +352,7 @@ def _desired_symbols(
     return {
         connector_name: tuple(dict.fromkeys(symbols))
         for connector_name, symbols in symbols_by_connector.items()
-        if connector_name in {"binance", "bybit", "okx", "bitget"}
+        if connector_name in {"binance", "bybit", "okx", "bitget", "gate"}
         and connector_name in enabled
         and symbols
     }

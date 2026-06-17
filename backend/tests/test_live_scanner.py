@@ -330,6 +330,119 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opportunities[0].ask_price, 99.0)
         self.assertEqual(opportunities[0].bid_price, 101.0)
 
+    async def test_websocket_mode_can_use_fresh_gate_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            gate_snapshot=_snapshot("Gate", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "Gate",
+                    bid=89.0,
+                    ask=90.0,
+                    volume_24h_usd=0,
+                    funding_rate_percent=0,
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_gate=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Gate")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 90.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+        self.assertEqual(opportunities[0].volume_24h_usd, 1_000_000)
+
+    async def test_websocket_mode_falls_back_to_gate_rest_when_gate_websocket_is_missing(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            gate_snapshot=_snapshot("Gate", bid=98.0, ask=99.0),
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_gate=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Gate")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
+    async def test_websocket_mode_falls_back_to_gate_rest_when_gate_websocket_is_stale(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            gate_snapshot=_snapshot("Gate", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "Gate",
+                    bid=89.0,
+                    ask=90.0,
+                    timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_gate=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Gate")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
 
 class StaticSnapshotConnector(ExchangeConnector):
     data_source = "test_rest"
@@ -360,6 +473,7 @@ def _live_registry(
     bybit_snapshot: MarketSnapshot,
     okx_snapshot: MarketSnapshot | None = None,
     bitget_snapshot: MarketSnapshot | None = None,
+    gate_snapshot: MarketSnapshot | None = None,
 ):
     from app.connectors.registry import ConnectorRegistry
 
@@ -370,6 +484,8 @@ def _live_registry(
         registry.register(StaticSnapshotConnector("okx", okx_snapshot))
     if bitget_snapshot is not None:
         registry.register(StaticSnapshotConnector("bitget", bitget_snapshot))
+    if gate_snapshot is not None:
+        registry.register(StaticSnapshotConnector("gate", gate_snapshot))
     return registry
 
 
@@ -378,6 +494,7 @@ def _live_config(
     websocket_enabled: bool,
     include_okx: bool = False,
     include_bitget: bool = False,
+    include_gate: bool = False,
 ):
     connectors = ["binance", "bybit"]
     exchanges = ["Binance", "Bybit"]
@@ -390,6 +507,10 @@ def _live_config(
         connectors.append("bitget")
         exchanges.append("Bitget")
         websocket_exchanges.append("bitget")
+    if include_gate:
+        connectors.append("gate")
+        exchanges.append("Gate")
+        websocket_exchanges.append("gate")
 
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)

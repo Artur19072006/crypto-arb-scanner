@@ -131,6 +131,39 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
 
         await manager.stop()
 
+    async def test_gate_websocket_snapshot_updates_cache_and_status(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("gate", "Gate")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("gate",),
+                websocket_exchanges=("gate",),
+            ),
+            {"gate": ("BTCUSDT",)},
+        )
+        await _wait_for_snapshot(cache)
+        status = await manager.status()
+
+        snapshots = await cache.get_all_snapshots()
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].exchange, "Gate")
+        self.assertEqual(snapshots[0].symbol, "BTCUSDT")
+        self.assertEqual(status.active_exchanges, ("gate",))
+        self.assertTrue(status.connected["gate"])
+        self.assertEqual(status.connection_count["gate"], 1)
+        self.assertEqual(status.chunk_count["gate"], 1)
+        self.assertEqual(status.symbol_count["gate"], 1)
+        self.assertIsNotNone(status.last_message_at["gate"])
+
+        await manager.stop()
+
     async def test_small_symbol_list_uses_one_websocket_chunk(self) -> None:
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(
