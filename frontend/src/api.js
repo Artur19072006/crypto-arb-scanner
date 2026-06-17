@@ -33,6 +33,26 @@ export async function fetchOpportunities(filters = {}) {
   return payload;
 }
 
+export async function fetchAlerts() {
+  const response = await fetch("/api/alerts");
+
+  if (!response.ok) {
+    throw new Error(`Failed to load alerts: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function fetchAlertStatus() {
+  const response = await fetch("/api/alerts/status");
+
+  if (!response.ok) {
+    throw new Error(`Failed to load alert status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function fetchSettings() {
   const response = await fetch("/api/settings");
 

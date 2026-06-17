@@ -8,6 +8,7 @@ from app.domain.models import ScannerFilters
 from app.services.market_data_cache import MarketDataCache
 from app.services.opportunity_store import OpportunityStore
 from app.services.runtime import (
+    alert_engine,
     market_data_cache,
     opportunity_store,
     symbol_universe_builder,
@@ -33,6 +34,7 @@ async def refresh_mock_scanner_once(
     connectors = active_registry.list_connectors()
     if not connectors:
         await store.set_error("No active market data connectors")
+        await alert_engine.clear_active()
         return
 
     scan_config = (
@@ -69,6 +71,7 @@ async def refresh_mock_scanner_once(
         if not snapshots:
             if scan_config.data_source_mode == "live":
                 await store.update_opportunities([])
+                await alert_engine.clear_active()
             return
 
     await cache.update_snapshots(snapshots)
@@ -98,6 +101,18 @@ async def refresh_mock_scanner_once(
         errors.append(f"depth_check: {exc}")
 
     await store.update_opportunities(opportunities)
+    try:
+        if config.alerts.enabled:
+            await alert_engine.evaluate(
+                opportunities,
+                config.alerts,
+                depth_check_enabled=config.depth_check.enabled,
+            )
+        else:
+            await alert_engine.clear_active()
+    except Exception as exc:
+        errors.append(f"alerts: {exc}")
+
     if errors:
         await store.set_error("; ".join(errors))
 

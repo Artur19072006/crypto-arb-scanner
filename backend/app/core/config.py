@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.fees import FALLBACK_EXCHANGE_FEES_BY_EXCHANGE
 from app.domain.models import (
+    AlertConfig,
     AppConfig,
     DataSourceMode,
     DepthCheckConfig,
@@ -68,6 +69,7 @@ def load_app_config(
         default_min_volume_24h_usd=filters.min_volume_24h_usd,
     )
     depth_check = _load_depth_check(raw_config.get("depth_check"))
+    alerts = _load_alerts(raw_config.get("alerts"))
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
@@ -80,6 +82,7 @@ def load_app_config(
         default_filters=filters,
         supported_exchanges=supported_exchanges,
         depth_check=depth_check,
+        alerts=alerts,
         telegram=telegram,
         config_source=str(source_path) if source_path else "built-in defaults",
     )
@@ -209,6 +212,55 @@ def _load_depth_check(raw_depth_check: Any) -> DepthCheckConfig:
     )
 
 
+def _load_alerts(raw_alerts: Any) -> AlertConfig:
+    defaults = AlertConfig()
+    if not isinstance(raw_alerts, dict):
+        return defaults
+
+    return AlertConfig(
+        enabled=bool(raw_alerts.get("enabled", False)),
+        min_net_spread_percent=float(
+            raw_alerts.get(
+                "min_net_spread_percent",
+                defaults.min_net_spread_percent,
+            )
+        ),
+        min_depth_adjusted_net_spread_percent=float(
+            raw_alerts.get(
+                "min_depth_adjusted_net_spread_percent",
+                defaults.min_depth_adjusted_net_spread_percent,
+            )
+        ),
+        require_depth_status=_depth_status_tuple(
+            raw_alerts.get(
+                "require_depth_status",
+                defaults.require_depth_status,
+            )
+        ),
+        max_allowed_slippage_percent=max(
+            0.0,
+            float(
+                raw_alerts.get(
+                    "max_allowed_slippage_percent",
+                    defaults.max_allowed_slippage_percent,
+                )
+            ),
+        ),
+        min_volume_24h_usd=max(
+            0.0,
+            float(raw_alerts.get("min_volume_24h_usd", defaults.min_volume_24h_usd)),
+        ),
+        cooldown_seconds=max(
+            0,
+            int(raw_alerts.get("cooldown_seconds", defaults.cooldown_seconds)),
+        ),
+        max_alerts_per_scan=max(
+            1,
+            int(raw_alerts.get("max_alerts_per_scan", defaults.max_alerts_per_scan)),
+        ),
+    )
+
+
 def _load_data_source_mode(raw_config: dict[str, Any]) -> DataSourceMode:
     raw_mode = raw_config.get("data_source_mode")
     raw_scanner = raw_config.get("scanner")
@@ -322,3 +374,10 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
     return tuple(str(item) for item in value if str(item).strip())
+
+
+def _depth_status_tuple(value: Any) -> tuple[str, ...]:
+    allowed_statuses = {"OK", "Thin", "Insufficient", "Unknown"}
+    statuses = _string_tuple(value)
+    parsed = tuple(status for status in statuses if status in allowed_statuses)
+    return parsed or AlertConfig().require_depth_status

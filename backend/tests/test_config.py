@@ -108,6 +108,14 @@ filters:
         self.assertEqual(config.depth_check.max_opportunities_to_check, 10)
         self.assertEqual(config.depth_check.order_book_limit, 50)
         self.assertEqual(config.depth_check.max_allowed_slippage_percent, 0.3)
+        self.assertFalse(config.alerts.enabled)
+        self.assertEqual(config.alerts.min_net_spread_percent, 0.15)
+        self.assertEqual(config.alerts.min_depth_adjusted_net_spread_percent, 0.05)
+        self.assertEqual(config.alerts.require_depth_status, ("OK", "Thin"))
+        self.assertEqual(config.alerts.max_allowed_slippage_percent, 0.3)
+        self.assertEqual(config.alerts.min_volume_24h_usd, 400_000)
+        self.assertEqual(config.alerts.cooldown_seconds, 300)
+        self.assertEqual(config.alerts.max_alerts_per_scan, 5)
 
     def test_loads_live_data_source_mode_as_reserved_config_value(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -204,6 +212,40 @@ depth_check:
         self.assertEqual(config.depth_check.max_opportunities_to_check, 5)
         self.assertEqual(config.depth_check.order_book_limit, 100)
         self.assertEqual(config.depth_check.max_allowed_slippage_percent, 0.25)
+
+    def test_loads_alert_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+alerts:
+  enabled: true
+  min_net_spread_percent: 0.20
+  min_depth_adjusted_net_spread_percent: 0.08
+  require_depth_status:
+    - OK
+  max_allowed_slippage_percent: 0.25
+  min_volume_24h_usd: 750000
+  cooldown_seconds: 120
+  max_alerts_per_scan: 3
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertTrue(config.alerts.enabled)
+        self.assertEqual(config.alerts.min_net_spread_percent, 0.20)
+        self.assertEqual(config.alerts.min_depth_adjusted_net_spread_percent, 0.08)
+        self.assertEqual(config.alerts.require_depth_status, ("OK",))
+        self.assertEqual(config.alerts.max_allowed_slippage_percent, 0.25)
+        self.assertEqual(config.alerts.min_volume_24h_usd, 750_000)
+        self.assertEqual(config.alerts.cooldown_seconds, 120)
+        self.assertEqual(config.alerts.max_alerts_per_scan, 3)
 
     def test_live_data_source_mode_defaults_to_public_connectors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

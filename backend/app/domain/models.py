@@ -9,6 +9,7 @@ DepthStatus = Literal["OK", "Thin", "Insufficient", "Unknown"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
 SymbolSelectionMode = Literal["manual", "auto"]
+AlertSeverity = Literal["Info", "Watch", "Strong"]
 OpportunitySortBy = Literal[
     "raw_spread",
     "net_spread",
@@ -109,6 +110,50 @@ class OpportunitiesResponse(BaseModel):
     limit: int = Field(ge=1)
 
 
+class AlertCandidate(BaseModel):
+    id: str
+    symbol: str
+    long_exchange: str
+    short_exchange: str
+    raw_spread_percent: float
+    estimated_net_spread_percent: float
+    depth_adjusted_net_spread_percent: float | None = None
+    depth_status: DepthStatus | None = None
+    target_notional_usd: float | None = None
+    long_slippage_percent: float | None = None
+    short_slippage_percent: float | None = None
+    funding_impact: FundingImpact
+    liquidity_status: LiquidityStatus
+    alert_score: float
+    severity: AlertSeverity
+    reasons: list[str] = Field(default_factory=list)
+    created_at: datetime
+    suppressed: bool = False
+    suppression_reason: str | None = None
+
+
+class AlertEvent(AlertCandidate):
+    pass
+
+
+class AlertsResponse(BaseModel):
+    alerts: list[AlertCandidate]
+    active_alert_count: int = Field(ge=0)
+
+
+class AlertHistoryResponse(BaseModel):
+    alerts: list[AlertEvent]
+    returned_count: int = Field(ge=0)
+
+
+class AlertStatusResponse(BaseModel):
+    enabled: bool
+    cooldown_seconds: int = Field(ge=0)
+    active_alert_count: int = Field(ge=0)
+    suppressed_count: int = Field(ge=0)
+    last_evaluated_at: datetime | None
+
+
 class TelegramDisplaySettings(BaseModel):
     enabled: bool = False
     alert_cooldown_seconds: int = Field(default=300, ge=0)
@@ -143,6 +188,17 @@ class DepthCheckConfig(BaseModel):
     max_allowed_slippage_percent: float = Field(default=0.3, ge=0)
 
 
+class AlertConfig(BaseModel):
+    enabled: bool = False
+    min_net_spread_percent: float = 0.15
+    min_depth_adjusted_net_spread_percent: float = 0.05
+    require_depth_status: tuple[DepthStatus, ...] = ("OK", "Thin")
+    max_allowed_slippage_percent: float = Field(default=0.3, ge=0)
+    min_volume_24h_usd: float = Field(default=400_000, ge=0)
+    cooldown_seconds: int = Field(default=300, ge=0)
+    max_alerts_per_scan: int = Field(default=5, ge=1)
+
+
 class AppConfig(BaseModel):
     data_source_mode: DataSourceMode = "mock"
     enabled_connectors: tuple[str, ...] = ("fake",)
@@ -155,6 +211,7 @@ class AppConfig(BaseModel):
     default_filters: ScannerFilters
     supported_exchanges: tuple[str, ...]
     depth_check: DepthCheckConfig = Field(default_factory=DepthCheckConfig)
+    alerts: AlertConfig = Field(default_factory=AlertConfig)
     telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
     config_source: str
 

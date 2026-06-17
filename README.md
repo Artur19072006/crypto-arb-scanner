@@ -14,6 +14,7 @@ This version defaults to mock bid/ask data. Optional live mode uses Binance, Byb
 - Placeholder Telegram notifier that does nothing without future implementation
 - Connector registry with fake connector in mock mode and optional Binance/Bybit/OKX public connectors in live mode
 - Optional public REST order book depth validation for top opportunities
+- Internal Alert Engine v1 for selecting notification-worthy opportunities without sending messages
 
 ## Project Structure
 
@@ -98,6 +99,7 @@ The backend reads `config/config.yaml` when it exists. If it does not exist, it 
 
 `data_source_mode` defaults to `mock`. Live mode currently supports Binance, Bybit, and OKX public market-data connectors.
 `depth_check.enabled` defaults to `false`, so the scanner avoids extra REST calls unless you explicitly enable depth validation.
+`alerts.enabled` defaults to `false`, so no alert candidates are generated unless you explicitly enable the internal alert engine.
 
 Frontend-safe settings are exposed at:
 
@@ -205,6 +207,48 @@ depth_check:
 ```
 
 When enabled, rows with depth data show status `OK`, `Thin`, `Insufficient`, or `Unknown`. `Unknown` means the opportunity is kept but at least one public depth request failed or no public depth connector was available.
+
+## Alert Engine
+
+Alert Engine v1 is an internal scanner-only layer. It evaluates the latest arbitrage opportunities and selects candidates that would be worth notifying about later. It does not send Telegram messages, play sounds, place trades, use exchange API keys, or call private/account endpoints.
+
+Alert filtering uses:
+
+- Estimated net spread when no depth result exists.
+- Depth-adjusted net spread when depth data exists.
+- Required depth status, usually `OK` or `Thin`.
+- Minimum 24h volume.
+- Funding and liquidity context as score adjustments.
+- Cooldown per `symbol + long_exchange + short_exchange`.
+- A maximum number of active alert candidates per scan.
+
+Cooldown prevents repeated candidates for the same opportunity key during repeated scanner refreshes. Suppressed candidates are kept in in-memory history for debugging, while `/api/alerts` returns only currently active candidates.
+
+Enable alerts in `config/config.yaml`:
+
+```yaml
+alerts:
+  enabled: true
+  min_net_spread_percent: 0.15
+  min_depth_adjusted_net_spread_percent: 0.05
+  require_depth_status:
+    - OK
+    - Thin
+  max_allowed_slippage_percent: 0.3
+  min_volume_24h_usd: 400000
+  cooldown_seconds: 300
+  max_alerts_per_scan: 5
+```
+
+Alert endpoints:
+
+```text
+http://127.0.0.1:8000/api/alerts
+http://127.0.0.1:8000/api/alerts/history
+http://127.0.0.1:8000/api/alerts/status
+```
+
+Telegram sending is the next implementation step. This version intentionally prepares the candidate selection layer only.
 
 Binance USD-M Futures public endpoints:
 

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchOpportunities, fetchSettings, fetchStatus } from "./api.js";
+import {
+  fetchAlerts,
+  fetchAlertStatus,
+  fetchOpportunities,
+  fetchSettings,
+  fetchStatus
+} from "./api.js";
 import {
   formatDateTime,
   formatNumber,
@@ -11,6 +17,8 @@ import {
 function App() {
   const [opportunities, setOpportunities] = useState([]);
   const [opportunityMeta, setOpportunityMeta] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [alertStatus, setAlertStatus] = useState(null);
   const [settings, setSettings] = useState(null);
   const [scannerStatus, setScannerStatus] = useState(null);
   const [defaultFilters, setDefaultFilters] = useState(createEmptyFilters());
@@ -65,13 +73,22 @@ function App() {
       setError("");
 
       try {
-        const [loadedOpportunities, loadedScannerStatus] = await Promise.all([
+        const [
+          loadedOpportunities,
+          loadedScannerStatus,
+          loadedAlerts,
+          loadedAlertStatus
+        ] = await Promise.all([
           fetchOpportunities(appliedFilters),
-          fetchStatus()
+          fetchStatus(),
+          fetchAlerts(),
+          fetchAlertStatus()
         ]);
         if (isMounted) {
           setOpportunities(loadedOpportunities.opportunities ?? []);
           setOpportunityMeta(loadedOpportunities);
+          setAlerts(loadedAlerts.alerts ?? []);
+          setAlertStatus(loadedAlertStatus);
           setScannerStatus(loadedScannerStatus);
           setRequestStatus("ready");
         }
@@ -218,6 +235,11 @@ function App() {
         </section>
       )}
 
+      <AlertsPanel
+        alertStatus={alertStatus}
+        alerts={alerts}
+      />
+
       <FilterControls
         filters={draftFilters}
         exchangeOptions={visibleExchangeOptions}
@@ -243,6 +265,49 @@ function App() {
         />
       )}
     </main>
+  );
+}
+
+function AlertsPanel({ alertStatus, alerts }) {
+  const visibleAlerts = Array.isArray(alerts) ? alerts.slice(0, 5) : [];
+
+  return (
+    <section className="alerts-panel" aria-label="Alert engine">
+      <div className="alerts-heading">
+        <div>
+          <span className="metric-label">Alert engine</span>
+          <strong>{formatAlertStatusLabel(alertStatus)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Active</span>
+          <strong>{alertStatus?.active_alert_count ?? 0}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Suppressed</span>
+          <strong>{alertStatus?.suppressed_count ?? 0}</strong>
+        </div>
+      </div>
+      {visibleAlerts.length > 0 ? (
+        <div className="alerts-list">
+          {visibleAlerts.map((alert) => (
+            <div className="alert-row" key={alert.id}>
+              <div>
+                <strong>{alert.symbol}</strong>
+                <span>{alert.long_exchange} / {alert.short_exchange}</span>
+              </div>
+              <span className={`pill severity-${alert.severity.toLowerCase()}`}>
+                {alert.severity}
+              </span>
+              <span>Net {formatPercent(alert.estimated_net_spread_percent)}</span>
+              <span>Depth {formatOptionalPercent(alert.depth_adjusted_net_spread_percent)}</span>
+              <span>Score {formatNumber(alert.alert_score, 2)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="alerts-empty">No active alert candidates.</p>
+      )}
+    </section>
   );
 }
 
@@ -660,6 +725,14 @@ function formatDepthCheckNote(depthCheck) {
   }
 
   return `Depth checked top ${depthCheck.max_opportunities_to_check} opportunities for ${formatUsd(depthCheck.target_notional_usd, 0)} size`;
+}
+
+function formatAlertStatusLabel(alertStatus) {
+  if (!alertStatus) {
+    return "Loading";
+  }
+
+  return alertStatus.enabled ? "Enabled" : "Disabled";
 }
 
 function formatOptionalPercent(value) {

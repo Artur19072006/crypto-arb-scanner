@@ -4,6 +4,9 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.core.config import get_app_config
 from app.domain.models import (
+    AlertHistoryResponse,
+    AlertsResponse,
+    AlertStatusResponse,
     AppConfig,
     ArbitrageOpportunity,
     OpportunitiesResponse,
@@ -14,6 +17,7 @@ from app.domain.models import (
 )
 from app.services.live_scanner import active_connector_names, active_data_sources
 from app.services.runtime import (
+    alert_engine,
     market_data_cache,
     opportunity_store,
     symbol_universe_builder,
@@ -69,8 +73,37 @@ async def get_scanner_status() -> ScannerStatus:
     )
 
 
+@router.get("/alerts", response_model=AlertsResponse)
+async def list_alerts() -> AlertsResponse:
+    alerts = await alert_engine.get_active_alerts()
+    return AlertsResponse(
+        alerts=alerts,
+        active_alert_count=len(alerts),
+    )
+
+
+@router.get("/alerts/history", response_model=AlertHistoryResponse)
+async def list_alert_history(
+    limit: Annotated[str | None, Query()] = None,
+) -> AlertHistoryResponse:
+    parsed_limit = _parse_alert_history_limit(limit)
+    alerts = await alert_engine.get_history(parsed_limit)
+    return AlertHistoryResponse(
+        alerts=alerts,
+        returned_count=len(alerts),
+    )
+
+
+@router.get("/alerts/status", response_model=AlertStatusResponse)
+async def get_alert_status() -> AlertStatusResponse:
+    config = get_app_config()
+    return await alert_engine.get_status(config.alerts)
+
+
 DEFAULT_OPPORTUNITY_LIMIT = 100
 MAX_OPPORTUNITY_LIMIT = 500
+DEFAULT_ALERT_HISTORY_LIMIT = 50
+MAX_ALERT_HISTORY_LIMIT = 200
 
 
 @router.get("/opportunities", response_model=OpportunitiesResponse)
@@ -272,6 +305,32 @@ def _parse_limit(value: str | int | None) -> int:
         raise HTTPException(
             status_code=422,
             detail=f"limit must be at most {MAX_OPPORTUNITY_LIMIT}",
+        )
+
+    return parsed
+
+
+def _parse_alert_history_limit(value: str | int | None) -> int:
+    if value in (None, ""):
+        return DEFAULT_ALERT_HISTORY_LIMIT
+
+    try:
+        parsed = int(str(value).strip())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be an integer",
+        ) from exc
+
+    if parsed < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be at least 1",
+        )
+    if parsed > MAX_ALERT_HISTORY_LIMIT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"limit must be at most {MAX_ALERT_HISTORY_LIMIT}",
         )
 
     return parsed
