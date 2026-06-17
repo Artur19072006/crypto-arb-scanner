@@ -300,6 +300,10 @@ function AlertsPanel({ alertStatus, telegramStatus, alerts }) {
           <span className="metric-label">Sent</span>
           <strong>{telegramStatus?.sent_count ?? 0}</strong>
         </div>
+        <div>
+          <span className="metric-label">Tracked</span>
+          <strong>{telegramStatus?.tracked_alert_keys_count ?? "-"}</strong>
+        </div>
       </div>
       {telegramStatus?.last_error && (
         <p className="telegram-error">Telegram: {telegramStatus.last_error}</p>

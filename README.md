@@ -250,7 +250,15 @@ http://127.0.0.1:8000/api/alerts/status
 
 ## Telegram Notifications
 
-Telegram Notifier v1 sends messages only for active Alert Engine candidates. It never sends raw opportunities directly, never sends suppressed alerts, and keeps an in-memory set of sent alert IDs so the same alert ID is not sent twice. Alert Engine cooldown remains the main duplicate-control layer for repeated scans.
+Telegram Notifier v1 sends messages only for active Alert Engine candidates. It never sends raw opportunities directly and never sends suppressed alerts.
+
+Telegram deduplication uses the stable alert key:
+
+```text
+symbol + long_exchange + short_exchange
+```
+
+The notifier tracks the last send time for each alert key in memory and respects `alerts.cooldown_seconds`. If the same opportunity remains active across repeated scanner refreshes, Telegram sends it once during the cooldown window. After the cooldown expires, the same still-active alert may be sent again. This in-memory state resets when the backend restarts.
 
 Set credentials as environment variables. For PowerShell:
 
@@ -278,7 +286,7 @@ Telegram status is available at:
 http://127.0.0.1:8000/api/telegram/status
 ```
 
-The status endpoint reports whether Telegram is enabled/configured, last send time, sent count, and last error. It never returns the bot token or chat ID.
+The status endpoint reports whether Telegram is enabled/configured, last send time, sent count, tracked alert-key count, and last error. It never returns the bot token or chat ID.
 
 Safety note: Telegram is notification-only. It does not create orders, execute trades, or access exchange account/private APIs.
 
