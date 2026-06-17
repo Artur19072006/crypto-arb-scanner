@@ -8,6 +8,7 @@ enabled_connectors:
 #   - bybit
 #   - okx
 #   - bitget
+#   - gate
 max_symbols: 3
 # Optional manual override when symbol_selection.mode is manual.
 symbol_allowlist:
@@ -70,6 +71,7 @@ filters:
     - Bybit
     - OKX
     - Bitget
+    - Gate
   blacklist:
     symbols: []
     exchanges: []

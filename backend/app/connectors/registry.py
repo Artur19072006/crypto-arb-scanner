@@ -3,6 +3,7 @@ from app.connectors.bitget import BitgetPublicConnector
 from app.connectors.binance import BinancePublicConnector
 from app.connectors.bybit import BybitPublicConnector
 from app.connectors.fake import FakeExchangeConnector
+from app.connectors.gate import GatePublicConnector
 from app.connectors.okx import OKXPublicConnector
 from app.domain.models import AppConfig
 
@@ -72,7 +73,15 @@ def build_connector_registry(
             )
         )
 
-    # TODO: Register Gate and KuCoin public connectors here later.
+    if data_source_mode == "live" and "gate" in enabled:
+        registry.register(
+            GatePublicConnector(
+                symbol_allowlist=symbol_allowlist,
+                max_symbols=max_symbols,
+            )
+        )
+
+    # TODO: Register KuCoin public connector here later.
     return registry
 
 

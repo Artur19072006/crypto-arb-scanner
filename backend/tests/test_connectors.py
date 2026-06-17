@@ -78,6 +78,17 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry.list_names(), ("bitget",))
         self.assertEqual(registry.get("bitget").data_source, "bitget_public_rest")
 
+    async def test_live_mode_registers_gate_public_connector_when_enabled(self) -> None:
+        registry = build_connector_registry(
+            data_source_mode="live",
+            enabled_connectors=("gate",),
+            symbol_allowlist=("BTCUSDT",),
+            max_symbols=1,
+        )
+
+        self.assertEqual(registry.list_names(), ("gate",))
+        self.assertEqual(registry.get("gate").data_source, "gate_public_rest")
+
     async def test_live_mode_registers_binance_bybit_and_okx_public_connectors(self) -> None:
         registry = build_connector_registry(
             data_source_mode="live",
@@ -94,13 +105,17 @@ class ConnectorRegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_mode_registers_bitget_with_existing_public_connectors(self) -> None:
         registry = build_connector_registry(
             data_source_mode="live",
-            enabled_connectors=("binance", "bybit", "okx", "bitget"),
+            enabled_connectors=("binance", "bybit", "okx", "bitget", "gate"),
             symbol_allowlist=("BTCUSDT",),
             max_symbols=1,
         )
 
-        self.assertEqual(registry.list_names(), ("binance", "bitget", "bybit", "okx"))
+        self.assertEqual(
+            registry.list_names(),
+            ("binance", "bitget", "bybit", "gate", "okx"),
+        )
         self.assertEqual(registry.get("bitget").data_source, "bitget_public_rest")
+        self.assertEqual(registry.get("gate").data_source, "gate_public_rest")
 
     async def test_live_mode_registers_bybit_public_connector(self) -> None:
         registry = build_connector_registry(

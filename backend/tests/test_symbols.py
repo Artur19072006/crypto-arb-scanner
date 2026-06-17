@@ -26,6 +26,7 @@ class SymbolNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_symbol(examples["OKX"]), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["Bitget"], "Bitget"), "BTCUSDT")
         self.assertEqual(normalize_symbol(examples["Gate"]), "BTCUSDT")
+        self.assertEqual(normalize_symbol("ETH_USDT", "Gate"), "ETHUSDT")
         self.assertEqual(normalize_symbol("BTC-USDT-SWAP", "OKX"), "BTCUSDT")
         self.assertEqual(normalize_symbol("ETH-USDT-SWAP", "OKX"), "ETHUSDT")
 
