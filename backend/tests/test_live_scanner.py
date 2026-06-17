@@ -27,6 +27,7 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
             "Bitget",
         })
         self.assertTrue(all(opportunity.long_exchange != opportunity.short_exchange for opportunity in opportunities))
+        self.assertTrue(all(opportunity.depth_check is None for opportunity in opportunities))
 
 
 if __name__ == "__main__":

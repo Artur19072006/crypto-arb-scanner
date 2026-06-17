@@ -119,6 +119,7 @@ function App() {
     ?? opportunities.length;
   const returnedOpportunityCount = opportunityMeta?.returned_count
     ?? opportunities.length;
+  const depthCheckNote = formatDepthCheckNote(settings?.depth_check);
 
   function applyFilters() {
     const normalizedFilters = normalizeFilters(draftFilters);
@@ -207,6 +208,13 @@ function App() {
         <section className="symbol-preview" aria-label="Selected symbols preview">
           <span className="metric-label">Preview</span>
           <strong>{formatSymbolsPreview(scannerStatus.selected_symbols)}</strong>
+        </section>
+      )}
+
+      {depthCheckNote && (
+        <section className="depth-note" aria-label="Depth check status">
+          <span className="metric-label">Depth</span>
+          <strong>{depthCheckNote}</strong>
         </section>
       )}
 
@@ -397,6 +405,7 @@ function OpportunitiesTable({
     status === "loading"
       ? "Loading opportunities..."
       : createEmptyOpportunityMessage(totalOpportunities, filteredOpportunities);
+  const hasDepthData = opportunities.some((opportunity) => opportunity.depth_check);
 
   return (
     <section className="table-section" aria-label="Arbitrage opportunities">
@@ -416,6 +425,7 @@ function OpportunitiesTable({
               <th>Size</th>
               <th>Funding</th>
               <th>Liquidity</th>
+              {hasDepthData && <th>Depth</th>}
             </tr>
           </thead>
           <tbody>
@@ -445,11 +455,20 @@ function OpportunitiesTable({
                     {opportunity.liquidity_status}
                   </span>
                 </td>
+                {hasDepthData && (
+                  <td>
+                    {opportunity.depth_check ? (
+                      <DepthCheckCell depthCheck={opportunity.depth_check} />
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {!opportunities.length && (
               <tr>
-                <td colSpan="12" className="empty-state">
+                <td colSpan={hasDepthData ? 13 : 12} className="empty-state">
                   {emptyMessage}
                 </td>
               </tr>
@@ -458,6 +477,21 @@ function OpportunitiesTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function DepthCheckCell({ depthCheck }) {
+  return (
+    <div className="depth-cell">
+      <span className={`pill depth-${depthCheck.depth_status.toLowerCase()}`}>
+        {depthCheck.depth_status}
+      </span>
+      <span>{formatUsd(depthCheck.target_notional_usd, 0)}</span>
+      <span>Adj {formatOptionalPercent(depthCheck.depth_adjusted_raw_spread_percent)}</span>
+      <span>
+        Slip {formatOptionalPercent(depthCheck.long_slippage_percent)} / {formatOptionalPercent(depthCheck.short_slippage_percent)}
+      </span>
+    </div>
   );
 }
 
@@ -614,6 +648,27 @@ function formatSymbolsPreview(symbols) {
   }
 
   return symbols.join(", ");
+}
+
+function formatDepthCheckNote(depthCheck) {
+  if (!depthCheck) {
+    return "";
+  }
+
+  if (!depthCheck.enabled) {
+    return "Depth check disabled";
+  }
+
+  return `Depth checked top ${depthCheck.max_opportunities_to_check} opportunities for ${formatUsd(depthCheck.target_notional_usd, 0)} size`;
+}
+
+function formatOptionalPercent(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return "-";
+  }
+
+  return formatPercent(numericValue);
 }
 
 const CONNECTOR_EXCHANGE_NAMES = {

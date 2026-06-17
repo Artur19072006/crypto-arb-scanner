@@ -5,12 +5,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.connectors.base import ExchangeConnector
-from app.domain.models import MarketSnapshot, MarketSymbol
+from app.domain.models import MarketSnapshot, MarketSymbol, OrderBookLevel, OrderBookSnapshot
 from app.services.symbols import normalize_symbol
 
 
 class BybitPublicConnector(ExchangeConnector):
     name = "bybit"
+    exchange_name = "Bybit"
     data_source = "bybit_public_rest"
 
     def __init__(
@@ -94,6 +95,40 @@ class BybitPublicConnector(ExchangeConnector):
             )
             for symbol in symbols
         ]
+
+    async def fetch_order_book(
+        self,
+        symbol: str,
+        limit: int = 50,
+    ) -> OrderBookSnapshot:
+        normalized_symbol = normalize_symbol(symbol, "Bybit")
+        response = await self._get_json(
+            "/v5/market/orderbook",
+            {
+                "category": "linear",
+                "symbol": normalized_symbol,
+                "limit": str(limit),
+            },
+        )
+        result = self._result(response)
+        bids = _levels_from_raw(result.get("b", []))
+        asks = _levels_from_raw(result.get("a", []))
+        if not bids or not asks:
+            raise ValueError("Bybit order book response has no bid/ask levels")
+
+        return OrderBookSnapshot(
+            exchange="Bybit",
+            symbol=normalize_symbol(str(result.get("s") or normalized_symbol), "Bybit"),
+            bids=bids,
+            asks=asks,
+            timestamp=(
+                _datetime_from_millis(result.get("ts"))
+                or _datetime_from_millis(response.get("time"))
+                if isinstance(response, dict)
+                else None
+            )
+            or datetime.now(timezone.utc),
+        )
 
     async def _fetch_instrument_symbols(
         self,
@@ -226,3 +261,22 @@ def _float_or_zero(value: object) -> float:
         return 0.0
 
     return float(value)
+
+
+def _levels_from_raw(raw_levels: object) -> list[OrderBookLevel]:
+    if not isinstance(raw_levels, list):
+        return []
+
+    levels: list[OrderBookLevel] = []
+    for raw_level in raw_levels:
+        if not isinstance(raw_level, (list, tuple)) or len(raw_level) < 2:
+            continue
+        try:
+            price = float(raw_level[0])
+            quantity = float(raw_level[1])
+        except (TypeError, ValueError):
+            continue
+        if price <= 0 or quantity <= 0:
+            continue
+        levels.append(OrderBookLevel(price=price, quantity=quantity))
+    return levels

@@ -5,12 +5,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.connectors.base import ExchangeConnector
-from app.domain.models import MarketSnapshot, MarketSymbol
+from app.domain.models import MarketSnapshot, MarketSymbol, OrderBookLevel, OrderBookSnapshot
 from app.services.symbols import normalize_symbol
 
 
 class OKXPublicConnector(ExchangeConnector):
     name = "okx"
+    exchange_name = "OKX"
     data_source = "okx_public_rest"
 
     def __init__(
@@ -123,6 +124,50 @@ class OKXPublicConnector(ExchangeConnector):
             )
             for symbol in symbols
         ]
+
+    async def fetch_order_book(
+        self,
+        symbol: str,
+        limit: int = 50,
+    ) -> OrderBookSnapshot:
+        normalized_symbol = normalize_symbol(symbol, "OKX")
+        inst_id = _okx_inst_id(normalized_symbol)
+        response = await self._get_json(
+            "/api/v5/market/books",
+            {"instId": inst_id, "sz": str(limit)},
+        )
+        data = self._data(response)
+        if not data:
+            raise ValueError("OKX order book response has no data")
+
+        quantity_multiplier = await self._contract_quantity_multiplier(inst_id)
+        book = data[0]
+        bids = _levels_from_raw(book.get("bids", []), quantity_multiplier)
+        asks = _levels_from_raw(book.get("asks", []), quantity_multiplier)
+        if not bids or not asks:
+            raise ValueError("OKX order book response has no bid/ask levels")
+
+        return OrderBookSnapshot(
+            exchange="OKX",
+            symbol=normalized_symbol,
+            bids=bids,
+            asks=asks,
+            timestamp=_datetime_from_millis(book.get("ts")) or datetime.now(timezone.utc),
+        )
+
+    async def _contract_quantity_multiplier(self, inst_id: str) -> float:
+        try:
+            response = await self._get_json(
+                "/api/v5/public/instruments",
+                {"instType": "SWAP", "instId": inst_id},
+            )
+            data = self._data(response)
+        except Exception:
+            return 1.0
+
+        instrument = data[0] if data else {}
+        contract_value = _float_or_zero(instrument.get("ctVal"))
+        return contract_value if contract_value > 0 else 1.0
 
     def _symbols_from_instruments(
         self,
@@ -309,3 +354,25 @@ def _float_or_zero(value: object) -> float:
         return 0.0
 
     return float(value)
+
+
+def _levels_from_raw(
+    raw_levels: object,
+    quantity_multiplier: float = 1.0,
+) -> list[OrderBookLevel]:
+    if not isinstance(raw_levels, list):
+        return []
+
+    levels: list[OrderBookLevel] = []
+    for raw_level in raw_levels:
+        if not isinstance(raw_level, (list, tuple)) or len(raw_level) < 2:
+            continue
+        try:
+            price = float(raw_level[0])
+            quantity = float(raw_level[1]) * quantity_multiplier
+        except (TypeError, ValueError):
+            continue
+        if price <= 0 or quantity <= 0:
+            continue
+        levels.append(OrderBookLevel(price=price, quantity=quantity))
+    return levels

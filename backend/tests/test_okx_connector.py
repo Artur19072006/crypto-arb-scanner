@@ -71,6 +71,44 @@ class OKXPublicConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(eth.funding_rate_percent, 0)
         self.assertIsNone(eth.next_funding_time)
 
+    async def test_fetch_order_book_maps_public_books_response(self) -> None:
+        connector = MockOKXPublicConnector({
+            ("/api/v5/market/books", "BTC-USDT-SWAP"): {
+                "code": "0",
+                "msg": "",
+                "data": [
+                    {
+                        "bids": [["65000.00", "50"], ["64999.00", "125"]],
+                        "asks": [["65001.00", "40"], ["65002.00", "110"]],
+                        "ts": "1710000000000",
+                    }
+                ],
+            },
+            ("/api/v5/public/instruments", "BTC-USDT-SWAP"): {
+                "code": "0",
+                "msg": "",
+                "data": [
+                    {
+                        "instType": "SWAP",
+                        "instId": "BTC-USDT-SWAP",
+                        "settleCcy": "USDT",
+                        "state": "live",
+                        "ctVal": "0.01",
+                    }
+                ],
+            },
+        })
+
+        order_book = await connector.fetch_order_book("BTCUSDT", limit=50)
+
+        self.assertEqual(order_book.exchange, "OKX")
+        self.assertEqual(order_book.symbol, "BTCUSDT")
+        self.assertEqual(order_book.bids[0].price, 65000.00)
+        self.assertEqual(order_book.bids[0].quantity, 0.50)
+        self.assertEqual(order_book.asks[1].price, 65002.00)
+        self.assertEqual(order_book.asks[1].quantity, 1.10)
+        self.assertIsNotNone(order_book.timestamp)
+
 
 def _instruments_response() -> dict:
     return {

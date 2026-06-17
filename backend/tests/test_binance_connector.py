@@ -145,6 +145,25 @@ class BinancePublicConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshots[0].volume_24h_usd, 123456789.10)
         self.assertEqual(snapshots[0].funding_rate_percent, 0.01)
 
+    async def test_fetch_order_book_maps_public_depth_response(self) -> None:
+        connector = MockBinancePublicConnector({
+            ("/fapi/v1/depth", "BTCUSDT"): {
+                "E": 1710000000000,
+                "bids": [["65000.00", "0.50"], ["64999.00", "1.25"]],
+                "asks": [["65001.00", "0.40"], ["65002.00", "1.10"]],
+            },
+        })
+
+        order_book = await connector.fetch_order_book("BTCUSDT", limit=50)
+
+        self.assertEqual(order_book.exchange, "Binance")
+        self.assertEqual(order_book.symbol, "BTCUSDT")
+        self.assertEqual(order_book.bids[0].price, 65000.00)
+        self.assertEqual(order_book.bids[0].quantity, 0.50)
+        self.assertEqual(order_book.asks[1].price, 65002.00)
+        self.assertEqual(order_book.asks[1].quantity, 1.10)
+        self.assertIsNotNone(order_book.timestamp)
+
 
 def _exchange_info_response() -> dict:
     return {

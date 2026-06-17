@@ -9,6 +9,7 @@ from app.core.fees import FALLBACK_EXCHANGE_FEES_BY_EXCHANGE
 from app.domain.models import (
     AppConfig,
     DataSourceMode,
+    DepthCheckConfig,
     ExchangeFees,
     ScannerFilters,
     SymbolSelectionConfig,
@@ -66,6 +67,7 @@ def load_app_config(
         max_symbols=max_symbols,
         default_min_volume_24h_usd=filters.min_volume_24h_usd,
     )
+    depth_check = _load_depth_check(raw_config.get("depth_check"))
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
@@ -77,6 +79,7 @@ def load_app_config(
         fees=fees,
         default_filters=filters,
         supported_exchanges=supported_exchanges,
+        depth_check=depth_check,
         telegram=telegram,
         config_source=str(source_path) if source_path else "built-in defaults",
     )
@@ -160,6 +163,49 @@ def _load_telegram_settings(raw_telegram: Any) -> TelegramDisplaySettings:
     return TelegramDisplaySettings(
         enabled=bool(raw_telegram.get("enabled", False)),
         alert_cooldown_seconds=int(raw_telegram.get("alert_cooldown_seconds", 300)),
+    )
+
+
+def _load_depth_check(raw_depth_check: Any) -> DepthCheckConfig:
+    defaults = DepthCheckConfig()
+    if not isinstance(raw_depth_check, dict):
+        return defaults
+
+    return DepthCheckConfig(
+        enabled=bool(raw_depth_check.get("enabled", False)),
+        target_notional_usd=float(
+            raw_depth_check.get(
+                "target_notional_usd",
+                defaults.target_notional_usd,
+            )
+        ),
+        max_opportunities_to_check=max(
+            1,
+            int(
+                raw_depth_check.get(
+                    "max_opportunities_to_check",
+                    defaults.max_opportunities_to_check,
+                )
+            ),
+        ),
+        order_book_limit=max(
+            1,
+            int(
+                raw_depth_check.get(
+                    "order_book_limit",
+                    defaults.order_book_limit,
+                )
+            ),
+        ),
+        max_allowed_slippage_percent=max(
+            0.0,
+            float(
+                raw_depth_check.get(
+                    "max_allowed_slippage_percent",
+                    defaults.max_allowed_slippage_percent,
+                )
+            ),
+        ),
     )
 
 

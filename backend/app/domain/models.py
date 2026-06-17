@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 LiquidityStatus = Literal["OK", "Thin", "Holey"]
+DepthStatus = Literal["OK", "Thin", "Insufficient", "Unknown"]
 FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
 SymbolSelectionMode = Literal["manual", "auto"]
@@ -37,6 +38,33 @@ class MarketSymbol(BaseModel):
     volume_24h_usd: float = Field(ge=0)
 
 
+class OrderBookLevel(BaseModel):
+    price: float = Field(gt=0)
+    quantity: float = Field(gt=0)
+
+
+class OrderBookSnapshot(BaseModel):
+    exchange: str
+    symbol: str
+    bids: list[OrderBookLevel]
+    asks: list[OrderBookLevel]
+    timestamp: datetime
+
+
+class DepthCheckResult(BaseModel):
+    target_notional_usd: float = Field(gt=0)
+    can_fill_long: bool
+    can_fill_short: bool
+    long_effective_price: float | None = Field(default=None, gt=0)
+    short_effective_price: float | None = Field(default=None, gt=0)
+    long_slippage_percent: float | None = None
+    short_slippage_percent: float | None = None
+    depth_adjusted_raw_spread_percent: float | None = None
+    depth_adjusted_net_spread_percent: float | None = None
+    depth_status: DepthStatus
+    depth_reasons: list[str] = Field(default_factory=list)
+
+
 class ExchangeFees(BaseModel):
     maker_percent: float = Field(ge=0)
     taker_percent: float = Field(ge=0)
@@ -60,6 +88,7 @@ class ArbitrageOpportunity(BaseModel):
     next_funding_time: datetime | None
     funding_impact: FundingImpact
     liquidity_status: LiquidityStatus
+    depth_check: DepthCheckResult | None = None
     timestamp: datetime
 
 
@@ -106,6 +135,14 @@ class SymbolUniverseSelection(BaseModel):
     errors: tuple[str, ...] = ()
 
 
+class DepthCheckConfig(BaseModel):
+    enabled: bool = False
+    target_notional_usd: float = Field(default=1000, gt=0)
+    max_opportunities_to_check: int = Field(default=10, ge=1)
+    order_book_limit: int = Field(default=50, ge=1)
+    max_allowed_slippage_percent: float = Field(default=0.3, ge=0)
+
+
 class AppConfig(BaseModel):
     data_source_mode: DataSourceMode = "mock"
     enabled_connectors: tuple[str, ...] = ("fake",)
@@ -117,6 +154,7 @@ class AppConfig(BaseModel):
     fees: dict[str, ExchangeFees]
     default_filters: ScannerFilters
     supported_exchanges: tuple[str, ...]
+    depth_check: DepthCheckConfig = Field(default_factory=DepthCheckConfig)
     telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
     config_source: str
 

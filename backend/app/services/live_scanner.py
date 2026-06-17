@@ -12,6 +12,7 @@ from app.services.runtime import (
     opportunity_store,
     symbol_universe_builder,
 )
+from app.services.depth_check import apply_depth_checks
 from app.services.spread_engine import calculate_opportunities
 
 
@@ -87,6 +88,15 @@ async def refresh_mock_scanner_once(
         config.fees,
         enabled_exchange_filter,
     )
+    try:
+        opportunities = await apply_depth_checks(
+            opportunities,
+            connectors,
+            config.depth_check,
+        )
+    except Exception as exc:
+        errors.append(f"depth_check: {exc}")
+
     await store.update_opportunities(opportunities)
     if errors:
         await store.set_error("; ".join(errors))

@@ -58,6 +58,13 @@ filters:
     symbols: []
     exchanges: []
 
+depth_check:
+  enabled: false
+  target_notional_usd: 1000
+  max_opportunities_to_check: 10
+  order_book_limit: 50
+  max_allowed_slippage_percent: 0.3
+
 telegram:
   enabled: false
   alert_cooldown_seconds: 300

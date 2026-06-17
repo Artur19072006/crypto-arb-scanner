@@ -5,12 +5,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.connectors.base import ExchangeConnector
-from app.domain.models import MarketSnapshot, MarketSymbol
+from app.domain.models import MarketSnapshot, MarketSymbol, OrderBookLevel, OrderBookSnapshot
 from app.services.symbols import normalize_symbol
 
 
 class BinancePublicConnector(ExchangeConnector):
     name = "binance"
+    exchange_name = "Binance"
     data_source = "binance_public_rest"
 
     def __init__(
@@ -76,6 +77,36 @@ class BinancePublicConnector(ExchangeConnector):
             )
             for symbol in symbols
         ]
+
+    async def fetch_order_book(
+        self,
+        symbol: str,
+        limit: int = 50,
+    ) -> OrderBookSnapshot:
+        normalized_symbol = normalize_symbol(symbol, "Binance")
+        response = await self._get_json(
+            "/fapi/v1/depth",
+            {"symbol": normalized_symbol, "limit": str(limit)},
+        )
+        if not isinstance(response, dict):
+            raise ValueError("Binance order book response must be an object")
+
+        bids = _levels_from_raw(response.get("bids", []))
+        asks = _levels_from_raw(response.get("asks", []))
+        if not bids or not asks:
+            raise ValueError("Binance order book response has no bid/ask levels")
+
+        return OrderBookSnapshot(
+            exchange="Binance",
+            symbol=normalized_symbol,
+            bids=bids,
+            asks=asks,
+            timestamp=(
+                _datetime_from_millis(response.get("E"))
+                or _datetime_from_millis(response.get("T"))
+                or datetime.now(timezone.utc)
+            ),
+        )
 
     async def _fetch_bulk_snapshots(
         self,
@@ -287,3 +318,22 @@ def _float_or_zero(value: object) -> float:
         return 0.0
 
     return float(value)
+
+
+def _levels_from_raw(raw_levels: object) -> list[OrderBookLevel]:
+    if not isinstance(raw_levels, list):
+        return []
+
+    levels: list[OrderBookLevel] = []
+    for raw_level in raw_levels:
+        if not isinstance(raw_level, (list, tuple)) or len(raw_level) < 2:
+            continue
+        try:
+            price = float(raw_level[0])
+            quantity = float(raw_level[1])
+        except (TypeError, ValueError):
+            continue
+        if price <= 0 or quantity <= 0:
+            continue
+        levels.append(OrderBookLevel(price=price, quantity=quantity))
+    return levels

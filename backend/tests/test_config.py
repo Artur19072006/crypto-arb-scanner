@@ -103,6 +103,11 @@ filters:
         self.assertEqual(config.symbol_selection.max_symbols, 10)
         self.assertEqual(config.default_filters.min_raw_spread, 0.10)
         self.assertEqual(config.default_filters.min_volume_24h_usd, 400_000)
+        self.assertFalse(config.depth_check.enabled)
+        self.assertEqual(config.depth_check.target_notional_usd, 1000)
+        self.assertEqual(config.depth_check.max_opportunities_to_check, 10)
+        self.assertEqual(config.depth_check.order_book_limit, 50)
+        self.assertEqual(config.depth_check.max_allowed_slippage_percent, 0.3)
 
     def test_loads_live_data_source_mode_as_reserved_config_value(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -172,6 +177,33 @@ symbol_selection:
         self.assertEqual(config.symbol_selection.min_exchanges_required, 3)
         self.assertEqual(config.symbol_selection.include_symbols, ("SOLUSDT",))
         self.assertEqual(config.symbol_selection.exclude_symbols, ("BTCUSDT", "ETHUSDT"))
+
+    def test_loads_depth_check_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+depth_check:
+  enabled: true
+  target_notional_usd: 1500
+  max_opportunities_to_check: 5
+  order_book_limit: 100
+  max_allowed_slippage_percent: 0.25
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertTrue(config.depth_check.enabled)
+        self.assertEqual(config.depth_check.target_notional_usd, 1500)
+        self.assertEqual(config.depth_check.max_opportunities_to_check, 5)
+        self.assertEqual(config.depth_check.order_book_limit, 100)
+        self.assertEqual(config.depth_check.max_allowed_slippage_percent, 0.25)
 
     def test_live_data_source_mode_defaults_to_public_connectors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
