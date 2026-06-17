@@ -83,6 +83,27 @@ export async function fetchStatus() {
   return response.json();
 }
 
+export async function fetchSpreadHistory({
+  symbol,
+  longExchange,
+  shortExchange,
+  limit = 500
+}) {
+  const params = new URLSearchParams();
+  addTextParam(params, "symbol", symbol);
+  addTextParam(params, "long_exchange", longExchange);
+  addTextParam(params, "short_exchange", shortExchange);
+  addNumericParam(params, "limit", limit);
+
+  const response = await fetch(`/api/spread-history?${params.toString()}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load spread history: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 function addNumericParam(params, key, value) {
   if (value === undefined || value === null || value === "") {
     return;

@@ -5,6 +5,7 @@ import {
   fetchAlertStatus,
   fetchOpportunities,
   fetchSettings,
+  fetchSpreadHistory,
   fetchStatus,
   fetchTelegramStatus
 } from "./api.js";
@@ -28,6 +29,7 @@ function App() {
   const [appliedFilters, setAppliedFilters] = useState(null);
   const [requestStatus, setRequestStatus] = useState("loading");
   const [error, setError] = useState("");
+  const [historySelection, setHistorySelection] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -174,6 +176,28 @@ function App() {
     setAppliedFilters(showAllFilters);
   }
 
+  if (historySelection) {
+    return (
+      <main className="app-shell">
+        <header className="top-bar">
+          <div>
+            <p className="eyebrow">Spread history</p>
+            <h1>{historySelection.symbol} - {historySelection.longExchange} vs {historySelection.shortExchange}</h1>
+          </div>
+          <button
+            type="button"
+            className="secondary-button standalone-action"
+            onClick={() => setHistorySelection(null)}
+          >
+            Back
+          </button>
+        </header>
+
+        <SpreadHistoryView selection={historySelection} />
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -276,6 +300,7 @@ function App() {
           status={requestStatus}
           totalOpportunities={totalStoredOpportunities}
           filteredOpportunities={filteredOpportunityCount}
+          onOpenHistory={setHistorySelection}
         />
       )}
     </main>
@@ -493,7 +518,8 @@ function OpportunitiesTable({
   opportunities,
   status,
   totalOpportunities,
-  filteredOpportunities
+  filteredOpportunities,
+  onOpenHistory
 }) {
   const emptyMessage =
     status === "loading"
@@ -520,6 +546,7 @@ function OpportunitiesTable({
               <th>Funding</th>
               <th>Liquidity</th>
               {hasDepthData && <th>Depth</th>}
+              <th>History</th>
             </tr>
           </thead>
           <tbody>
@@ -558,11 +585,24 @@ function OpportunitiesTable({
                     )}
                   </td>
                 )}
+                <td>
+                  <button
+                    type="button"
+                    className="table-action-button"
+                    onClick={() => onOpenHistory({
+                      symbol: opportunity.symbol,
+                      longExchange: opportunity.long_exchange,
+                      shortExchange: opportunity.short_exchange
+                    })}
+                  >
+                    History
+                  </button>
+                </td>
               </tr>
             ))}
             {!opportunities.length && (
               <tr>
-                <td colSpan={hasDepthData ? 13 : 12} className="empty-state">
+                <td colSpan={hasDepthData ? 14 : 13} className="empty-state">
                   {emptyMessage}
                 </td>
               </tr>
@@ -572,6 +612,228 @@ function OpportunitiesTable({
       </div>
     </section>
   );
+}
+
+function SpreadHistoryView({ selection }) {
+  const [history, setHistory] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadHistory() {
+      setStatus("loading");
+      setError("");
+
+      try {
+        const loadedHistory = await fetchSpreadHistory({
+          symbol: selection.symbol,
+          longExchange: selection.longExchange,
+          shortExchange: selection.shortExchange,
+          limit: 500
+        });
+        if (isMounted) {
+          setHistory(loadedHistory);
+          setStatus("ready");
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError.message);
+          setStatus("error");
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selection]);
+
+  const rows = Array.isArray(history?.rows) ? history.rows : [];
+  const stats = useMemo(() => summarizeHistoryRows(rows), [rows]);
+
+  return (
+    <section className="history-screen" aria-label="Spread history">
+      <div className="history-heading">
+        <div>
+          <span className="metric-label">Pair</span>
+          <strong>{selection.symbol}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Direction</span>
+          <strong>{selection.longExchange} long / {selection.shortExchange} short</strong>
+        </div>
+        <div>
+          <span className="metric-label">Latest spread</span>
+          <strong>{stats.latest === null ? "-" : formatPercent(stats.latest)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Max spread</span>
+          <strong>{stats.max === null ? "-" : formatPercent(stats.max)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Rows</span>
+          <strong>{history?.returned_count ?? rows.length}</strong>
+        </div>
+      </div>
+
+      {status === "loading" && (
+        <p className="empty-state history-message">Loading spread history...</p>
+      )}
+      {status === "error" && (
+        <p className="error-message">{error}</p>
+      )}
+      {status === "ready" && rows.length === 0 && (
+        <p className="empty-state history-message">No history stored for this direction yet.</p>
+      )}
+      {status === "ready" && rows.length > 0 && (
+        <>
+          <SpreadHistoryChart rows={rows} />
+          <div className="history-footer">
+            <span>First {formatDateTime(rows[0].timestamp)}</span>
+            <span>Latest {formatDateTime(rows[rows.length - 1].timestamp)}</span>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function SpreadHistoryChart({ rows }) {
+  const width = 920;
+  const height = 360;
+  const padding = {
+    top: 18,
+    right: 22,
+    bottom: 28,
+    left: 54
+  };
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const maxAbsValue = Math.max(
+    0.01,
+    ...rows.flatMap((row) => [
+      Math.abs(Number(row.lower_line_percent) || 0),
+      Math.abs(Number(row.upper_line_percent) || 0),
+      Math.abs(Number(row.selected_spread_percent) || 0)
+    ])
+  );
+  const yExtent = maxAbsValue * 1.15;
+  const lowerPoints = createLinePoints(rows, "lower_line_percent", {
+    padding,
+    innerWidth,
+    innerHeight,
+    yExtent
+  });
+  const upperPoints = createLinePoints(rows, "upper_line_percent", {
+    padding,
+    innerWidth,
+    innerHeight,
+    yExtent
+  });
+  const zeroY = yToChart(0, padding, innerHeight, yExtent);
+  const singlePoint = rows.length === 1
+    ? {
+        x: padding.left + innerWidth / 2,
+        upperY: yToChart(Number(rows[0].upper_line_percent) || 0, padding, innerHeight, yExtent),
+        lowerY: yToChart(Number(rows[0].lower_line_percent) || 0, padding, innerHeight, yExtent)
+      }
+    : null;
+
+  return (
+    <div className="history-chart-wrap">
+      <svg
+        className="history-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Normalized spread history chart"
+      >
+        <line
+          x1={padding.left}
+          x2={width - padding.right}
+          y1={zeroY}
+          y2={zeroY}
+          className="chart-zero-line"
+        />
+        <line
+          x1={padding.left}
+          x2={padding.left}
+          y1={padding.top}
+          y2={height - padding.bottom}
+          className="chart-axis-line"
+        />
+        <line
+          x1={padding.left}
+          x2={width - padding.right}
+          y1={height - padding.bottom}
+          y2={height - padding.bottom}
+          className="chart-axis-line"
+        />
+        <text x={12} y={padding.top + 4} className="chart-label">
+          {formatPercent(yExtent)}
+        </text>
+        <text x={28} y={zeroY - 6} className="chart-label">
+          0%
+        </text>
+        <text x={8} y={height - padding.bottom} className="chart-label">
+          {formatPercent(-yExtent)}
+        </text>
+        <polyline points={upperPoints} className="chart-line chart-line-upper" />
+        <polyline points={lowerPoints} className="chart-line chart-line-lower" />
+        {singlePoint && (
+          <>
+            <circle cx={singlePoint.x} cy={singlePoint.upperY} r="4" className="chart-point-upper" />
+            <circle cx={singlePoint.x} cy={singlePoint.lowerY} r="4" className="chart-point-lower" />
+          </>
+        )}
+      </svg>
+      <div className="history-legend">
+        <span><i className="legend-swatch upper" /> Upper line</span>
+        <span><i className="legend-swatch lower" /> Lower line</span>
+        <span><i className="legend-swatch center" /> 0%</span>
+      </div>
+    </div>
+  );
+}
+
+function createLinePoints(rows, key, chart) {
+  if (rows.length === 1) {
+    const y = yToChart(Number(rows[0][key]) || 0, chart.padding, chart.innerHeight, chart.yExtent);
+    const x = chart.padding.left + chart.innerWidth / 2;
+    return `${x},${y}`;
+  }
+
+  return rows.map((row, index) => {
+    const x = chart.padding.left + (index / (rows.length - 1)) * chart.innerWidth;
+    const y = yToChart(Number(row[key]) || 0, chart.padding, chart.innerHeight, chart.yExtent);
+    return `${x},${y}`;
+  }).join(" ");
+}
+
+function yToChart(value, padding, innerHeight, yExtent) {
+  const ratio = (yExtent - value) / (yExtent * 2);
+  return padding.top + ratio * innerHeight;
+}
+
+function summarizeHistoryRows(rows) {
+  if (!rows.length) {
+    return {
+      latest: null,
+      max: null
+    };
+  }
+
+  const spreads = rows
+    .map((row) => Number(row.selected_spread_percent))
+    .filter((value) => Number.isFinite(value));
+
+  return {
+    latest: Number(rows[rows.length - 1].selected_spread_percent),
+    max: spreads.length ? Math.max(...spreads) : null
+  };
 }
 
 function DepthCheckCell({ depthCheck }) {
