@@ -113,6 +113,7 @@ class OpportunitiesResponse(BaseModel):
 
 class AlertCandidate(BaseModel):
     id: str
+    alert_key: str
     symbol: str
     long_exchange: str
     short_exchange: str
@@ -161,6 +162,7 @@ class TelegramStatusResponse(BaseModel):
     last_sent_at: datetime | None
     sent_count: int = Field(ge=0)
     last_error: str | None
+    tracked_alert_keys_count: int = Field(default=0, ge=0)
 
 
 class TelegramDisplaySettings(BaseModel):

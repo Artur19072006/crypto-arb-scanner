@@ -109,7 +109,11 @@ async def refresh_mock_scanner_once(
                 config.alerts,
                 depth_check_enabled=config.depth_check.enabled,
             )
-            await telegram_notifier.send_alerts(active_alerts, config.telegram)
+            await telegram_notifier.send_alerts(
+                active_alerts,
+                config.telegram,
+                cooldown_seconds=config.alerts.cooldown_seconds,
+            )
         else:
             await alert_engine.clear_active()
     except Exception as exc:

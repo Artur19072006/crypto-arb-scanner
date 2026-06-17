@@ -29,7 +29,7 @@ class TelegramNotifier:
     ) -> None:
         self._sender = sender or _send_telegram_message
         self._env_provider = env_provider or _env_value
-        self._sent_alert_ids: set[str] = set()
+        self._last_sent_by_alert_key: dict[str, datetime] = {}
         self._last_sent_at: datetime | None = None
         self._sent_count = 0
         self._last_error: str | None = None
@@ -39,6 +39,8 @@ class TelegramNotifier:
         self,
         alerts: list[AlertCandidate],
         config: TelegramDisplaySettings,
+        cooldown_seconds: int = 300,
+        now: datetime | None = None,
     ) -> int:
         if not config.enabled:
             return 0
@@ -53,12 +55,19 @@ class TelegramNotifier:
             return 0
 
         sent = 0
+        checked_at = now or datetime.now(timezone.utc)
+        cooldown_seconds = max(0, cooldown_seconds)
         for alert in alerts:
             if alert.suppressed:
                 continue
 
+            alert_key = _stable_alert_key(alert)
             async with self._lock:
-                if alert.id in self._sent_alert_ids:
+                if _is_within_cooldown(
+                    last_sent_at=self._last_sent_by_alert_key.get(alert_key),
+                    checked_at=checked_at,
+                    cooldown_seconds=cooldown_seconds,
+                ):
                     continue
 
             message = format_alert_message(alert)
@@ -81,8 +90,8 @@ class TelegramNotifier:
                 continue
 
             async with self._lock:
-                self._sent_alert_ids.add(alert.id)
-                self._last_sent_at = datetime.now(timezone.utc)
+                self._last_sent_by_alert_key[alert_key] = checked_at
+                self._last_sent_at = checked_at
                 self._sent_count += 1
                 self._last_error = None
                 sent += 1
@@ -104,6 +113,7 @@ class TelegramNotifier:
                 last_sent_at=self._last_sent_at,
                 sent_count=self._sent_count,
                 last_error=self._last_error,
+                tracked_alert_keys_count=len(self._last_sent_by_alert_key),
             )
 
     async def _set_error(self, message: str) -> None:
@@ -154,6 +164,24 @@ def format_alert_message(alert: AlertCandidate) -> str:
         lines.extend(f"- {escape(reason)}" for reason in alert.reasons[:6])
 
     return "\n".join(lines)
+
+
+def _stable_alert_key(alert: AlertCandidate) -> str:
+    return (
+        alert.alert_key
+        or f"{alert.symbol}:{alert.long_exchange}:{alert.short_exchange}"
+    )
+
+
+def _is_within_cooldown(
+    last_sent_at: datetime | None,
+    checked_at: datetime,
+    cooldown_seconds: int,
+) -> bool:
+    if last_sent_at is None or cooldown_seconds <= 0:
+        return False
+
+    return (checked_at - last_sent_at).total_seconds() < cooldown_seconds
 
 
 async def _send_telegram_message(

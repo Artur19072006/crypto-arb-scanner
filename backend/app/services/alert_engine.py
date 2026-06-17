@@ -183,6 +183,7 @@ class AlertEngine:
 
         return AlertCandidate(
             id=_alert_id(opportunity, created_at),
+            alert_key=_opportunity_key(opportunity),
             symbol=opportunity.symbol,
             long_exchange=opportunity.long_exchange,
             short_exchange=opportunity.short_exchange,
@@ -388,7 +389,7 @@ def _alert_id(opportunity: ArbitrageOpportunity, created_at: datetime) -> str:
 
 
 def _alert_key(candidate: AlertCandidate) -> str:
-    return f"{candidate.symbol}:{candidate.long_exchange}:{candidate.short_exchange}"
+    return candidate.alert_key
 
 
 def _opportunity_key(opportunity: ArbitrageOpportunity) -> str:
