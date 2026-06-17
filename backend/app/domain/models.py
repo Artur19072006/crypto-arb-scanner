@@ -117,13 +117,21 @@ class AlertCandidate(BaseModel):
     symbol: str
     long_exchange: str
     short_exchange: str
+    ask_price: float | None = Field(default=None, gt=0)
+    bid_price: float | None = Field(default=None, gt=0)
     raw_spread_percent: float
     estimated_net_spread_percent: float
+    estimated_fee_percent: float | None = Field(default=None, ge=0)
     depth_adjusted_net_spread_percent: float | None = None
     depth_status: DepthStatus | None = None
     target_notional_usd: float | None = None
     long_slippage_percent: float | None = None
     short_slippage_percent: float | None = None
+    long_funding_rate_percent: float | None = None
+    short_funding_rate_percent: float | None = None
+    funding_rate_difference_percent: float | None = None
+    next_funding_time: datetime | None = None
+    volume_24h_usd: float | None = Field(default=None, ge=0)
     funding_impact: FundingImpact
     liquidity_status: LiquidityStatus
     alert_score: float

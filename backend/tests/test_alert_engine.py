@@ -36,6 +36,13 @@ class AlertEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0].symbol, "BTCUSDT")
         self.assertEqual(active[0].alert_key, "BTCUSDT:Binance:Bybit")
+        self.assertEqual(active[0].ask_price, 100.0)
+        self.assertEqual(active[0].bid_price, 101.0)
+        self.assertEqual(active[0].estimated_fee_percent, 0.20)
+        self.assertEqual(active[0].long_funding_rate_percent, 0.01)
+        self.assertEqual(active[0].short_funding_rate_percent, 0.02)
+        self.assertEqual(active[0].funding_rate_difference_percent, 0.01)
+        self.assertEqual(active[0].volume_24h_usd, 1_000_000)
         self.assertFalse(active[0].suppressed)
         self.assertIn("Net spread above alert threshold", active[0].reasons)
 

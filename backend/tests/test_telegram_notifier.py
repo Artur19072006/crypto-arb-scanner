@@ -58,11 +58,19 @@ class TelegramNotifierTests(unittest.IsolatedAsyncioTestCase):
             '<a href="https://www.binance.com/en/futures/SPACEUSDT">Binance</a> - <b>LONG</b>',
             payload["text"],
         )
+        self.assertIn("Ask: 0.19694", payload["text"])
+        self.assertIn("Funding: -0.1234%", payload["text"])
         self.assertIn(
             '<a href="https://www.bybit.com/trade/usdt/SPACEUSDT">Bybit</a> - <b>SHORT</b>',
             payload["text"],
         )
+        self.assertIn("Bid: 0.19755", payload["text"])
+        self.assertIn("Funding: -0.0842%", payload["text"])
         self.assertIn("Depth net: 0.1400%", payload["text"])
+        self.assertIn("Fees: 0.2100%", payload["text"])
+        self.assertIn("Funding diff: -0.0392%", payload["text"])
+        self.assertIn("Next funding: 2026-06-17 12:00 UTC", payload["text"])
+        self.assertIn("24h volume: $1,234,567", payload["text"])
         self.assertEqual(timeout, 10)
         self.assertEqual(status.sent_count, 1)
         self.assertIsNotNone(status.last_sent_at)
@@ -182,7 +190,9 @@ class TelegramNotifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Raw: 0.4900%", message)
         self.assertIn("Net: 0.2800%", message)
         self.assertIn("Depth net: 0.1400%", message)
-        self.assertIn("Severity: Strong", message)
+        self.assertIn("<b>SPACEUSDT</b> - <b>Strong</b>", message)
+        self.assertNotIn("Reasons:", message)
+        self.assertNotIn("Reason:", message)
         self.assertNotIn("buy", message.lower())
         self.assertNotIn("execute", message.lower())
 
@@ -208,8 +218,32 @@ class TelegramNotifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<b>SPACE&lt;USDT&amp;</b>", message)
         self.assertIn("Binance &amp; Co - <b>LONG</b>", message)
         self.assertIn("Bybit &lt;Main&gt; - <b>SHORT</b>", message)
-        self.assertIn("- Depth &lt;ok&gt; &amp; safe", message)
+        self.assertNotIn("Reasons:", message)
+        self.assertNotIn("Depth &lt;ok&gt; &amp; safe", message)
         self.assertNotIn("<b>SPACE<USDT&</b>", message)
+
+    def test_formats_alert_message_skips_missing_market_fields(self) -> None:
+        message = format_alert_message(
+            _alert(
+                ask_price=None,
+                bid_price=None,
+                estimated_fee_percent=None,
+                long_funding_rate_percent=None,
+                short_funding_rate_percent=None,
+                funding_rate_difference_percent=None,
+                next_funding_time=None,
+                volume_24h_usd=None,
+            )
+        )
+
+        self.assertNotIn("Ask:", message)
+        self.assertNotIn("Bid:", message)
+        self.assertNotIn("Fees:", message)
+        self.assertNotIn("\nFunding:", message)
+        self.assertNotIn("Funding diff:", message)
+        self.assertNotIn("Next funding:", message)
+        self.assertNotIn("24h volume:", message)
+        self.assertNotIn("None", message)
 
 
 class RecordingSender:
@@ -231,6 +265,21 @@ def _alert(
     long_exchange: str = "Binance",
     short_exchange: str = "Bybit",
     reasons: list[str] | None = None,
+    ask_price: float | None = 0.19694,
+    bid_price: float | None = 0.19755,
+    estimated_fee_percent: float | None = 0.21,
+    long_funding_rate_percent: float | None = -0.1234,
+    short_funding_rate_percent: float | None = -0.0842,
+    funding_rate_difference_percent: float | None = -0.0392,
+    next_funding_time: datetime | None = datetime(
+        2026,
+        6,
+        17,
+        12,
+        0,
+        tzinfo=timezone.utc,
+    ),
+    volume_24h_usd: float | None = 1_234_567,
 ) -> AlertCandidate:
     return AlertCandidate(
         id=alert_id,
@@ -238,13 +287,21 @@ def _alert(
         symbol=symbol,
         long_exchange=long_exchange,
         short_exchange=short_exchange,
+        ask_price=ask_price,
+        bid_price=bid_price,
         raw_spread_percent=0.49,
         estimated_net_spread_percent=0.28,
+        estimated_fee_percent=estimated_fee_percent,
         depth_adjusted_net_spread_percent=0.14,
         depth_status="OK",
         target_notional_usd=500,
         long_slippage_percent=0.03,
         short_slippage_percent=0.04,
+        long_funding_rate_percent=long_funding_rate_percent,
+        short_funding_rate_percent=short_funding_rate_percent,
+        funding_rate_difference_percent=funding_rate_difference_percent,
+        next_funding_time=next_funding_time,
+        volume_24h_usd=volume_24h_usd,
         funding_impact="Good",
         liquidity_status="OK",
         alert_score=12.5,

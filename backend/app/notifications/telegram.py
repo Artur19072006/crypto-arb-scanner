@@ -123,17 +123,38 @@ class TelegramNotifier:
 
 def format_alert_message(alert: AlertCandidate) -> str:
     lines = [
-        f"<b>{escape(alert.symbol)}</b>",
+        f"<b>{escape(alert.symbol)}</b> - <b>{escape(alert.severity)}</b>",
         "",
         f"{_exchange_link(alert.long_exchange, alert.symbol)} - <b>LONG</b>",
-        f"{_exchange_link(alert.short_exchange, alert.symbol)} - <b>SHORT</b>",
-        "",
-        "<b>Spread</b>",
-        f"Raw: {_format_percent(alert.raw_spread_percent)}",
-        f"Net: {_format_percent(alert.estimated_net_spread_percent)}",
     ]
+    if alert.ask_price is not None:
+        lines.append(f"Ask: {_format_price(alert.ask_price)}")
+    if alert.long_funding_rate_percent is not None:
+        lines.append(f"Funding: {_format_percent(alert.long_funding_rate_percent)}")
+
+    lines.extend(
+        [
+            "",
+            f"{_exchange_link(alert.short_exchange, alert.symbol)} - <b>SHORT</b>",
+        ]
+    )
+    if alert.bid_price is not None:
+        lines.append(f"Bid: {_format_price(alert.bid_price)}")
+    if alert.short_funding_rate_percent is not None:
+        lines.append(f"Funding: {_format_percent(alert.short_funding_rate_percent)}")
+
+    lines.extend(
+        [
+            "",
+            "<b>Spread</b>",
+            f"Raw: {_format_percent(alert.raw_spread_percent)}",
+            f"Net: {_format_percent(alert.estimated_net_spread_percent)}",
+        ]
+    )
     if alert.depth_adjusted_net_spread_percent is not None:
         lines.append(f"Depth net: {_format_percent(alert.depth_adjusted_net_spread_percent)}")
+    if alert.estimated_fee_percent is not None:
+        lines.append(f"Fees: {_format_percent(alert.estimated_fee_percent)}")
 
     if alert.depth_status:
         lines.extend(["", "<b>Depth</b>", f"Status: {escape(alert.depth_status)}"])
@@ -149,18 +170,20 @@ def format_alert_message(alert: AlertCandidate) -> str:
             f"{_format_optional_percent(alert.short_slippage_percent)}"
         )
 
-    lines.extend(
-        [
-            "",
-            f"Funding impact: {escape(alert.funding_impact)}",
-            f"Severity: {escape(alert.severity)}",
-            f"Timestamp: {alert.created_at.isoformat()}",
-        ]
-    )
-    if alert.reasons:
-        reason_heading = "Reason:" if len(alert.reasons) == 1 else "Reasons:"
-        lines.extend(["", reason_heading])
-        lines.extend(f"- {escape(reason)}" for reason in alert.reasons[:4])
+    context_lines = [
+        f"Funding diff: {_format_percent(alert.funding_rate_difference_percent)}"
+        if alert.funding_rate_difference_percent is not None
+        else None,
+        f"Funding impact: {escape(alert.funding_impact)}",
+        f"Next funding: {_format_datetime_utc(alert.next_funding_time)}"
+        if alert.next_funding_time is not None
+        else None,
+        f"24h volume: {_format_usd(alert.volume_24h_usd)}"
+        if alert.volume_24h_usd is not None
+        else None,
+        f"Timestamp: {_format_datetime_utc(alert.created_at)}",
+    ]
+    lines.extend(["", *[line for line in context_lines if line]])
 
     return "\n".join(lines)
 
@@ -306,3 +329,19 @@ def _format_optional_percent(value: float | None) -> str:
     if value is None:
         return "-"
     return _format_percent(value)
+
+
+def _format_price(value: float) -> str:
+    return f"{value:.8f}".rstrip("0").rstrip(".")
+
+
+def _format_usd(value: float) -> str:
+    if value >= 1:
+        return f"${value:,.0f}"
+    return f"${value:,.4f}".rstrip("0").rstrip(".")
+
+
+def _format_datetime_utc(value: datetime) -> str:
+    if value.tzinfo is None:
+        return f"{value.strftime('%Y-%m-%d %H:%M')} UTC"
+    return f"{value.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC"
