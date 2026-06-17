@@ -20,8 +20,19 @@ class PublicWebSocketConnector(ABC):
     exchange_name: str
     data_source: str
 
-    def __init__(self, reconnect_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
+    ) -> None:
         self.reconnect_seconds = max(1, reconnect_seconds)
+        self.max_reconnect_attempts = max(0, max_reconnect_attempts)
+
+    def can_reconnect(self, reconnect_attempts: int) -> bool:
+        return (
+            self.max_reconnect_attempts == 0
+            or reconnect_attempts < self.max_reconnect_attempts
+        )
 
     @abstractmethod
     async def listen(
@@ -42,9 +53,13 @@ class BinanceBookTickerWebSocketConnector(PublicWebSocketConnector):
     def __init__(
         self,
         reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
         base_url: str = "wss://fstream.binance.com/public/ws",
     ) -> None:
-        super().__init__(reconnect_seconds=reconnect_seconds)
+        super().__init__(
+            reconnect_seconds=reconnect_seconds,
+            max_reconnect_attempts=max_reconnect_attempts,
+        )
         self.base_url = base_url.rstrip("/")
 
     async def listen(
@@ -60,9 +75,11 @@ class BinanceBookTickerWebSocketConnector(PublicWebSocketConnector):
             return
 
         url = self._stream_url(selected_symbols)
+        reconnect_attempts = 0
         while not stop_event.is_set():
             try:
                 async with websockets.connect(url) as websocket:
+                    reconnect_attempts = 0
                     await on_connection_status(self.name, True, None)
                     while not stop_event.is_set():
                         try:
@@ -76,7 +93,10 @@ class BinanceBookTickerWebSocketConnector(PublicWebSocketConnector):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reconnect_attempts += 1
                 await on_connection_status(self.name, False, str(exc))
+                if not self.can_reconnect(reconnect_attempts):
+                    break
                 await _sleep_until_stop(stop_event, self.reconnect_seconds)
 
         await on_connection_status(self.name, False, None)
@@ -94,9 +114,13 @@ class BybitTickerWebSocketConnector(PublicWebSocketConnector):
     def __init__(
         self,
         reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
         base_url: str = "wss://stream.bybit.com/v5/public/linear",
     ) -> None:
-        super().__init__(reconnect_seconds=reconnect_seconds)
+        super().__init__(
+            reconnect_seconds=reconnect_seconds,
+            max_reconnect_attempts=max_reconnect_attempts,
+        )
         self.base_url = base_url
         self._ticker_state_by_symbol: dict[str, dict[str, Any]] = {}
 
@@ -115,9 +139,11 @@ class BybitTickerWebSocketConnector(PublicWebSocketConnector):
         topics = [f"tickers.{symbol}" for symbol in selected_symbols]
         subscribe_message = json.dumps({"op": "subscribe", "args": topics})
 
+        reconnect_attempts = 0
         while not stop_event.is_set():
             try:
                 async with websockets.connect(self.base_url) as websocket:
+                    reconnect_attempts = 0
                     await websocket.send(subscribe_message)
                     await on_connection_status(self.name, True, None)
                     last_ping_at = datetime.now(timezone.utc)
@@ -137,7 +163,10 @@ class BybitTickerWebSocketConnector(PublicWebSocketConnector):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reconnect_attempts += 1
                 await on_connection_status(self.name, False, str(exc))
+                if not self.can_reconnect(reconnect_attempts):
+                    break
                 await _sleep_until_stop(stop_event, self.reconnect_seconds)
 
         await on_connection_status(self.name, False, None)
@@ -154,9 +183,13 @@ class OKXTickerWebSocketConnector(PublicWebSocketConnector):
     def __init__(
         self,
         reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
         base_url: str = "wss://ws.okx.com:8443/ws/v5/public",
     ) -> None:
-        super().__init__(reconnect_seconds=reconnect_seconds)
+        super().__init__(
+            reconnect_seconds=reconnect_seconds,
+            max_reconnect_attempts=max_reconnect_attempts,
+        )
         self.base_url = base_url
 
     async def listen(
@@ -178,9 +211,11 @@ class OKXTickerWebSocketConnector(PublicWebSocketConnector):
             }
         )
 
+        reconnect_attempts = 0
         while not stop_event.is_set():
             try:
                 async with websockets.connect(self.base_url) as websocket:
+                    reconnect_attempts = 0
                     await websocket.send(subscribe_message)
                     await on_connection_status(self.name, True, None)
                     while not stop_event.is_set():
@@ -195,7 +230,10 @@ class OKXTickerWebSocketConnector(PublicWebSocketConnector):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reconnect_attempts += 1
                 await on_connection_status(self.name, False, str(exc))
+                if not self.can_reconnect(reconnect_attempts):
+                    break
                 await _sleep_until_stop(stop_event, self.reconnect_seconds)
 
         await on_connection_status(self.name, False, None)
@@ -352,6 +390,7 @@ def parse_okx_ticker_message(message: str | bytes) -> MarketSnapshot | None:
 def build_public_websocket_connectors(
     exchanges: tuple[str, ...],
     reconnect_seconds: int,
+    max_reconnect_attempts: int = 0,
 ) -> list[PublicWebSocketConnector]:
     connectors: list[PublicWebSocketConnector] = []
     enabled = set(exchanges)
@@ -359,18 +398,21 @@ def build_public_websocket_connectors(
         connectors.append(
             BinanceBookTickerWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
+                max_reconnect_attempts=max_reconnect_attempts,
             )
         )
     if "bybit" in enabled:
         connectors.append(
             BybitTickerWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
+                max_reconnect_attempts=max_reconnect_attempts,
             )
         )
     if "okx" in enabled:
         connectors.append(
             OKXTickerWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
+                max_reconnect_attempts=max_reconnect_attempts,
             )
         )
     return connectors

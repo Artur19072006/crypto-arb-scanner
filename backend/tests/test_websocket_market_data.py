@@ -8,7 +8,29 @@ from app.connectors.websocket import PublicWebSocketConnector
 from app.core.config import load_app_config
 from app.domain.models import MarketSnapshot
 from app.services.market_data_cache import MarketDataCache
-from app.services.websocket_market_data import WebSocketMarketDataManager
+from app.services.websocket_market_data import WebSocketMarketDataManager, _chunk_symbols
+
+
+class WebSocketSymbolChunkingTests(unittest.TestCase):
+    def test_chunk_symbols_preserves_small_symbol_lists_as_one_chunk(self) -> None:
+        chunks = _chunk_symbols(("BTCUSDT", "ETHUSDT"), 50)
+
+        self.assertEqual(chunks, (("BTCUSDT", "ETHUSDT"),))
+
+    def test_chunk_symbols_splits_large_symbol_lists(self) -> None:
+        chunks = _chunk_symbols(
+            ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"),
+            2,
+        )
+
+        self.assertEqual(
+            chunks,
+            (
+                ("BTCUSDT", "ETHUSDT"),
+                ("SOLUSDT", "XRPUSDT"),
+                ("ADAUSDT",),
+            ),
+        )
 
 
 class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
@@ -16,7 +38,7 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(
             cache,
-            connector_factory=lambda exchanges, reconnect_seconds: [
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
                 OneShotWebSocketConnector("binance", "Binance")
             ],
         )
@@ -36,6 +58,10 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshots[0].source, "websocket")
         self.assertEqual(status.active_exchanges, ("binance",))
         self.assertTrue(status.connected["binance"])
+        self.assertEqual(status.connection_count["binance"], 1)
+        self.assertEqual(status.chunk_count["binance"], 1)
+        self.assertEqual(status.symbol_count["binance"], 1)
+        self.assertIsNotNone(status.last_message_at["binance"])
         self.assertIsNotNone(status.last_update_at)
 
         await manager.stop()
@@ -47,7 +73,7 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(
             cache,
-            connector_factory=lambda exchanges, reconnect_seconds: [
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
                 OneShotWebSocketConnector("okx", "OKX")
             ],
         )
@@ -72,11 +98,82 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
 
         await manager.stop()
 
+    async def test_small_symbol_list_uses_one_websocket_chunk(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("binance", "Binance")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(max_symbols_per_connection=50),
+            {"binance": ("BTCUSDT", "ETHUSDT")},
+        )
+        await _wait_for_snapshot_count(cache, 1)
+        status = await manager.status()
+
+        self.assertEqual(status.chunk_count["binance"], 1)
+        self.assertEqual(status.connection_count["binance"], 1)
+        self.assertEqual(status.symbol_count["binance"], 2)
+        self.assertTrue(status.connected["binance"])
+
+        await manager.stop()
+
+    async def test_large_symbol_list_uses_multiple_websocket_chunks(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("binance", "Binance")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(max_symbols_per_connection=2),
+            {"binance": ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT")},
+        )
+        await _wait_for_snapshot_count(cache, 3)
+        status = await manager.status()
+
+        self.assertEqual(status.chunk_count["binance"], 3)
+        self.assertEqual(status.connection_count["binance"], 3)
+        self.assertEqual(status.symbol_count["binance"], 5)
+        self.assertTrue(status.connected["binance"])
+
+        await manager.stop()
+
+    async def test_failed_websocket_chunk_retries_without_crashing_manager(self) -> None:
+        cache = MarketDataCache()
+        connector = FlakyWebSocketConnector("binance", "Binance")
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                connector
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(max_reconnect_attempts=2),
+            {"binance": ("BTCUSDT",)},
+        )
+        await _wait_for_snapshot(cache)
+        status = await manager.status()
+
+        self.assertEqual(connector.listen_calls, 2)
+        self.assertTrue(status.connected["binance"])
+        self.assertEqual(status.connection_count["binance"], 1)
+        self.assertEqual(status.reconnect_count["binance"], 1)
+        self.assertIsNone(status.last_error_by_exchange["binance"])
+
+        await manager.stop()
+
     async def test_websocket_disabled_stops_running_tasks(self) -> None:
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(
             cache,
-            connector_factory=lambda exchanges, reconnect_seconds: [
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
                 OneShotWebSocketConnector("binance", "Binance")
             ],
         )
@@ -130,9 +227,53 @@ class OneShotWebSocketConnector(PublicWebSocketConnector):
         await stop_event.wait()
 
 
+class FlakyWebSocketConnector(PublicWebSocketConnector):
+    data_source = "test_websocket"
+
+    def __init__(self, name: str, exchange_name: str) -> None:
+        super().__init__(reconnect_seconds=1)
+        self.reconnect_seconds = 0
+        self.name = name
+        self.exchange_name = exchange_name
+        self.listen_calls = 0
+
+    async def listen(
+        self,
+        symbols,
+        on_snapshot,
+        on_connection_status,
+        stop_event,
+    ) -> None:
+        self.listen_calls += 1
+        if self.listen_calls == 1:
+            raise RuntimeError("temporary websocket failure")
+
+        await on_connection_status(self.name, True, None)
+        await on_snapshot(
+            MarketSnapshot(
+                exchange=self.exchange_name,
+                symbol=symbols[0],
+                best_bid=100.0,
+                best_bid_size=1.0,
+                best_ask=101.0,
+                best_ask_size=1.0,
+                volume_24h_usd=0,
+                funding_rate_percent=0,
+                next_funding_time=None,
+                timestamp=datetime.now(timezone.utc),
+                source="websocket",
+            )
+        )
+        await stop_event.wait()
+
+
 async def _wait_for_snapshot(cache: MarketDataCache) -> None:
+    await _wait_for_snapshot_count(cache, 1)
+
+
+async def _wait_for_snapshot_count(cache: MarketDataCache, count: int) -> None:
     for _ in range(20):
-        if await cache.snapshot_count():
+        if await cache.snapshot_count() >= count:
             return
         await asyncio.sleep(0.01)
     raise AssertionError("Timed out waiting for websocket snapshot")
@@ -141,6 +282,8 @@ async def _wait_for_snapshot(cache: MarketDataCache) -> None:
 def _live_websocket_config(
     enabled_connectors: tuple[str, ...] = ("binance",),
     websocket_exchanges: tuple[str, ...] = ("binance",),
+    max_symbols_per_connection: int = 50,
+    max_reconnect_attempts: int = 0,
 ):
     return _load_config(
         f"""
@@ -157,6 +300,9 @@ market_data:
 {_yaml_list(websocket_exchanges, indent=6)}
     reconnect_seconds: 1
     stale_after_seconds: 20
+    max_symbols_per_connection: {max_symbols_per_connection}
+    connection_start_delay_seconds: 0
+    max_reconnect_attempts: {max_reconnect_attempts}
 """
     )
 

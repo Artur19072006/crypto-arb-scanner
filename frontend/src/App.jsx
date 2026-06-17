@@ -741,7 +741,10 @@ function formatWebSocketStatus(scannerStatus) {
     return "Off";
   }
 
-  const connected = scannerStatus.websocket_connected ?? {};
+  const connectionCounts = scannerStatus.websocket_connection_count ?? {};
+  const chunkCounts = scannerStatus.websocket_chunk_count ?? {};
+  const symbolCounts = scannerStatus.websocket_symbol_count ?? {};
+  const lastErrors = scannerStatus.websocket_last_error ?? {};
   const activeExchanges = Array.isArray(scannerStatus.websocket_active_exchanges)
     ? scannerStatus.websocket_active_exchanges
     : [];
@@ -749,11 +752,32 @@ function formatWebSocketStatus(scannerStatus) {
     return "Starting";
   }
 
-  const connectedCount = activeExchanges.filter((exchange) => connected[exchange]).length;
+  const connectedConnectionCount = activeExchanges.reduce(
+    (total, exchange) => total + (Number(connectionCounts[exchange]) || 0),
+    0
+  );
+  const totalChunkCount = activeExchanges.reduce(
+    (total, exchange) => total + (Number(chunkCounts[exchange]) || 0),
+    0
+  );
+  const totalSymbolCount = activeExchanges.reduce(
+    (total, exchange) => total + (Number(symbolCounts[exchange]) || 0),
+    0
+  );
   const staleCount = Number(scannerStatus.stale_snapshot_count) || 0;
-  return staleCount > 0
-    ? `${connectedCount}/${activeExchanges.length} · ${staleCount} stale`
-    : `${connectedCount}/${activeExchanges.length}`;
+  const hasError = activeExchanges.some((exchange) => Boolean(lastErrors[exchange]));
+  const parts = [
+    `${connectedConnectionCount}/${totalChunkCount || activeExchanges.length} conn`,
+    `${totalSymbolCount} sym`
+  ];
+  if (staleCount > 0) {
+    parts.push(`${staleCount} stale`);
+  }
+  if (hasError) {
+    parts.push("error");
+  }
+
+  return parts.join(" - ");
 }
 
 function formatSymbolSelectionMode(mode) {

@@ -188,6 +188,9 @@ class WebSocketMarketDataConfig(BaseModel):
     exchanges: tuple[str, ...] = ("binance", "bybit", "okx")
     reconnect_seconds: int = Field(default=5, ge=1)
     stale_after_seconds: int = Field(default=20, ge=1)
+    max_symbols_per_connection: int = Field(default=50, ge=1)
+    connection_start_delay_seconds: float = Field(default=0.25, ge=0)
+    max_reconnect_attempts: int = Field(default=0, ge=0)
 
 
 class MarketDataConfig(BaseModel):
@@ -272,6 +275,12 @@ class ScannerStatus(BaseModel):
     websocket_enabled: bool = False
     websocket_active_exchanges: tuple[str, ...] = ()
     websocket_connected: dict[str, bool] = Field(default_factory=dict)
+    websocket_connection_count: dict[str, int] = Field(default_factory=dict)
+    websocket_chunk_count: dict[str, int] = Field(default_factory=dict)
+    websocket_symbol_count: dict[str, int] = Field(default_factory=dict)
+    websocket_last_message_at: dict[str, datetime | None] = Field(default_factory=dict)
+    websocket_last_error: dict[str, str | None] = Field(default_factory=dict)
+    websocket_reconnect_count: dict[str, int] = Field(default_factory=dict)
     stale_snapshot_count: int = Field(default=0, ge=0)
     last_websocket_update_at: datetime | None = None
     symbol_selection_mode: SymbolSelectionMode

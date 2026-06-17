@@ -76,6 +76,12 @@ async def get_scanner_status() -> ScannerStatus:
         websocket_enabled=websocket_enabled,
         websocket_active_exchanges=websocket_status.active_exchanges,
         websocket_connected=websocket_status.connected,
+        websocket_connection_count=websocket_status.connection_count,
+        websocket_chunk_count=websocket_status.chunk_count,
+        websocket_symbol_count=websocket_status.symbol_count,
+        websocket_last_message_at=websocket_status.last_message_at,
+        websocket_last_error=websocket_status.last_error_by_exchange,
+        websocket_reconnect_count=websocket_status.reconnect_count,
         stale_snapshot_count=stale_snapshot_count,
         last_websocket_update_at=(
             websocket_status.last_update_at

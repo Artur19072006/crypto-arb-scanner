@@ -118,6 +118,10 @@ filters:
         self.assertEqual(config.alerts.min_net_spread_percent, 0.15)
         self.assertEqual(config.alerts.min_depth_adjusted_net_spread_percent, 0.05)
         self.assertEqual(config.alerts.require_depth_status, ("OK", "Thin"))
+        self.assertFalse(config.market_data.websocket.enabled)
+        self.assertEqual(config.market_data.websocket.max_symbols_per_connection, 50)
+        self.assertEqual(config.market_data.websocket.connection_start_delay_seconds, 0.25)
+        self.assertEqual(config.market_data.websocket.max_reconnect_attempts, 0)
         self.assertEqual(config.alerts.max_allowed_slippage_percent, 0.3)
         self.assertEqual(config.alerts.min_volume_24h_usd, 400_000)
         self.assertEqual(config.alerts.cooldown_seconds, 300)
@@ -279,6 +283,9 @@ market_data:
       - okx
     reconnect_seconds: 7
     stale_after_seconds: 15
+    max_symbols_per_connection: 25
+    connection_start_delay_seconds: 0.5
+    max_reconnect_attempts: 3
 """,
                 encoding="utf-8",
             )
@@ -293,6 +300,9 @@ market_data:
         self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit", "okx"))
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 7)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 15)
+        self.assertEqual(config.market_data.websocket.max_symbols_per_connection, 25)
+        self.assertEqual(config.market_data.websocket.connection_start_delay_seconds, 0.5)
+        self.assertEqual(config.market_data.websocket.max_reconnect_attempts, 3)
 
     def test_loads_telegram_config_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

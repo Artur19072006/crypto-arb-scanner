@@ -35,6 +35,9 @@ market_data:
       - okx
     reconnect_seconds: 5
     stale_after_seconds: 20
+    max_symbols_per_connection: 50
+    connection_start_delay_seconds: 0.25
+    max_reconnect_attempts: 0
 
 fees:
   Binance:

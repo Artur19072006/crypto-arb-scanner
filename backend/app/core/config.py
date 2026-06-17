@@ -318,6 +318,33 @@ def _load_websocket_market_data(raw_websocket: Any) -> WebSocketMarketDataConfig
                 )
             ),
         ),
+        max_symbols_per_connection=max(
+            1,
+            int(
+                raw_websocket.get(
+                    "max_symbols_per_connection",
+                    defaults.max_symbols_per_connection,
+                )
+            ),
+        ),
+        connection_start_delay_seconds=max(
+            0.0,
+            float(
+                raw_websocket.get(
+                    "connection_start_delay_seconds",
+                    defaults.connection_start_delay_seconds,
+                )
+            ),
+        ),
+        max_reconnect_attempts=max(
+            0,
+            int(
+                raw_websocket.get(
+                    "max_reconnect_attempts",
+                    defaults.max_reconnect_attempts,
+                )
+            ),
+        ),
     )
 
 

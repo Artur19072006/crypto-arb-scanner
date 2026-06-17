@@ -245,9 +245,12 @@ market_data:
       - okx
     reconnect_seconds: 5
     stale_after_seconds: 20
+    max_symbols_per_connection: 50
+    connection_start_delay_seconds: 0.25
+    max_reconnect_attempts: 0
 ```
 
-WebSocket mode still uses REST for symbol selection, funding context, depth checks, and fallback when a WebSocket snapshot is missing or stale.
+WebSocket mode still uses REST for symbol selection, funding context, depth checks, and fallback when a WebSocket snapshot is missing or stale. `max_symbols_per_connection` splits larger symbol lists into separate public WebSocket connections, `connection_start_delay_seconds` staggers startup, and `max_reconnect_attempts: 0` means reconnect indefinitely.
 
 ## Optional Depth Check
 
