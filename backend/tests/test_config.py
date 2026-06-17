@@ -138,6 +138,9 @@ filters:
         )
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 5)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 20)
+        self.assertFalse(config.history.enabled)
+        self.assertEqual(config.history.sqlite_path, "data/spread_history.sqlite")
+        self.assertEqual(config.history.write_interval_seconds, 10)
         self.assertFalse(config.telegram.enabled)
         self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
         self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
@@ -363,6 +366,29 @@ market_data:
         self.assertEqual(config.market_data.websocket.max_symbols_per_connection, 25)
         self.assertEqual(config.market_data.websocket.connection_start_delay_seconds, 0.5)
         self.assertEqual(config.market_data.websocket.max_reconnect_attempts, 3)
+
+    def test_loads_spread_history_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+history:
+  enabled: true
+  sqlite_path: data/custom_spread_history.sqlite
+  write_interval_seconds: 30
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertTrue(config.history.enabled)
+        self.assertEqual(config.history.sqlite_path, "data/custom_spread_history.sqlite")
+        self.assertEqual(config.history.write_interval_seconds, 30)
 
     def test_loads_telegram_config_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

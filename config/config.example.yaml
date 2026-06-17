@@ -43,6 +43,11 @@ market_data:
     connection_start_delay_seconds: 0.25
     max_reconnect_attempts: 0
 
+history:
+  enabled: false
+  sqlite_path: data/spread_history.sqlite
+  write_interval_seconds: 10
+
 fees:
   Binance:
     maker_percent: 0.02

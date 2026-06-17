@@ -7,10 +7,12 @@ from app.core.config import get_app_config
 from app.domain.models import AppConfig, ScannerFilters
 from app.services.market_data_cache import MarketDataCache
 from app.services.opportunity_store import OpportunityStore
+from app.db.spread_history import SpreadHistoryStore
 from app.services.runtime import (
     alert_engine,
     market_data_cache,
     opportunity_store,
+    spread_history_store,
     symbol_universe_builder,
     telegram_notifier,
     websocket_market_data_manager,
@@ -34,6 +36,7 @@ async def refresh_mock_scanner_once(
     store: OpportunityStore = opportunity_store,
     registry: ConnectorRegistry | None = None,
     websocket_manager: WebSocketMarketDataManager = websocket_market_data_manager,
+    history_store: SpreadHistoryStore = spread_history_store,
     config: AppConfig | None = None,
 ) -> None:
     config = config or get_app_config()
@@ -119,6 +122,12 @@ async def refresh_mock_scanner_once(
         errors.append(f"depth_check: {exc}")
 
     await store.update_opportunities(opportunities)
+    if config.history.enabled:
+        try:
+            await history_store.record_opportunities(config.history, opportunities)
+        except Exception as exc:
+            errors.append(f"history: {exc}")
+
     try:
         if config.alerts.enabled:
             active_alerts = await alert_engine.evaluate(

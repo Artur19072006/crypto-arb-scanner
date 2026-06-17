@@ -14,6 +14,7 @@ from app.domain.models import (
     ExchangeFees,
     MarketDataConfig,
     ScannerFilters,
+    SpreadHistoryConfig,
     SymbolSelectionConfig,
     TelegramDisplaySettings,
     WebSocketMarketDataConfig,
@@ -73,6 +74,7 @@ def load_app_config(
     depth_check = _load_depth_check(raw_config.get("depth_check"))
     alerts = _load_alerts(raw_config.get("alerts"))
     market_data = _load_market_data(raw_config.get("market_data"))
+    history = _load_history(raw_config.get("history"))
     supported_exchanges = _supported_exchanges(fees, filters)
 
     return AppConfig(
@@ -88,6 +90,7 @@ def load_app_config(
         alerts=alerts,
         telegram=telegram,
         market_data=market_data,
+        history=history,
         config_source=str(source_path) if source_path else "built-in defaults",
     )
 
@@ -285,6 +288,26 @@ def _load_market_data(raw_market_data: Any) -> MarketDataConfig:
     websocket = _load_websocket_market_data(raw_websocket)
 
     return MarketDataConfig(mode=mode, websocket=websocket)
+
+
+def _load_history(raw_history: Any) -> SpreadHistoryConfig:
+    defaults = SpreadHistoryConfig()
+    if not isinstance(raw_history, dict):
+        return defaults
+
+    return SpreadHistoryConfig(
+        enabled=bool(raw_history.get("enabled", defaults.enabled)),
+        sqlite_path=str(raw_history.get("sqlite_path", defaults.sqlite_path)),
+        write_interval_seconds=max(
+            0,
+            int(
+                raw_history.get(
+                    "write_interval_seconds",
+                    defaults.write_interval_seconds,
+                )
+            ),
+        ),
+    )
 
 
 def _load_websocket_market_data(raw_websocket: Any) -> WebSocketMarketDataConfig:

@@ -14,6 +14,7 @@ from app.domain.models import (
     ScannerFilters,
     ScannerStatus,
     SortDirection,
+    SpreadHistoryResponse,
     TelegramStatusResponse,
 )
 from app.services.live_scanner import active_connector_names, active_data_sources
@@ -21,6 +22,7 @@ from app.services.runtime import (
     alert_engine,
     market_data_cache,
     opportunity_store,
+    spread_history_store,
     symbol_universe_builder,
     telegram_notifier,
     websocket_market_data_manager,
@@ -138,6 +140,8 @@ DEFAULT_OPPORTUNITY_LIMIT = 100
 MAX_OPPORTUNITY_LIMIT = 500
 DEFAULT_ALERT_HISTORY_LIMIT = 50
 MAX_ALERT_HISTORY_LIMIT = 200
+DEFAULT_SPREAD_HISTORY_LIMIT = 500
+MAX_SPREAD_HISTORY_LIMIT = 5000
 
 
 @router.get("/opportunities", response_model=OpportunitiesResponse)
@@ -171,6 +175,39 @@ async def list_opportunities(
         sort_by=sort_by,
         sort_dir=sort_dir,
         limit=limit,
+    )
+
+
+@router.get("/spread-history", response_model=SpreadHistoryResponse)
+async def get_spread_history(
+    symbol: Annotated[str, Query()],
+    long_exchange: Annotated[str, Query()],
+    short_exchange: Annotated[str, Query()],
+    limit: Annotated[str | None, Query()] = None,
+) -> SpreadHistoryResponse:
+    parsed_limit = _parse_spread_history_limit(limit)
+    normalized_symbol = normalize_symbol(symbol)
+    if not normalized_symbol:
+        raise HTTPException(status_code=422, detail="symbol is required")
+
+    parsed_long_exchange = _parse_required_text(long_exchange, "long_exchange")
+    parsed_short_exchange = _parse_required_text(short_exchange, "short_exchange")
+    config = get_app_config()
+    rows = await spread_history_store.get_history(
+        config.history.sqlite_path,
+        normalized_symbol,
+        parsed_long_exchange,
+        parsed_short_exchange,
+        parsed_limit,
+    )
+
+    return SpreadHistoryResponse(
+        symbol=rows[0].symbol if rows else normalized_symbol,
+        long_exchange=rows[0].long_exchange if rows else parsed_long_exchange,
+        short_exchange=rows[0].short_exchange if rows else parsed_short_exchange,
+        limit=parsed_limit,
+        returned_count=len(rows),
+        rows=rows,
     )
 
 
@@ -375,6 +412,39 @@ def _parse_alert_history_limit(value: str | int | None) -> int:
             detail=f"limit must be at most {MAX_ALERT_HISTORY_LIMIT}",
         )
 
+    return parsed
+
+
+def _parse_spread_history_limit(value: str | int | None) -> int:
+    if value in (None, ""):
+        return DEFAULT_SPREAD_HISTORY_LIMIT
+
+    try:
+        parsed = int(str(value).strip())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be an integer",
+        ) from exc
+
+    if parsed < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="limit must be at least 1",
+        )
+    if parsed > MAX_SPREAD_HISTORY_LIMIT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"limit must be at most {MAX_SPREAD_HISTORY_LIMIT}",
+        )
+
+    return parsed
+
+
+def _parse_required_text(value: str, field_name: str) -> str:
+    parsed = value.strip()
+    if not parsed:
+        raise HTTPException(status_code=422, detail=f"{field_name} is required")
     return parsed
 
 

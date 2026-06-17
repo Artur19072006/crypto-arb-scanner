@@ -200,6 +200,44 @@ class MarketDataConfig(BaseModel):
     )
 
 
+class SpreadHistoryConfig(BaseModel):
+    enabled: bool = False
+    sqlite_path: str = "data/spread_history.sqlite"
+    write_interval_seconds: int = Field(default=10, ge=0)
+
+
+class SpreadHistoryPoint(BaseModel):
+    timestamp: datetime
+    symbol: str
+    long_exchange: str
+    short_exchange: str
+    ask_price: float = Field(gt=0)
+    bid_price: float = Field(gt=0)
+    raw_spread_percent: float
+    estimated_net_spread_percent: float | None = None
+    depth_adjusted_net_spread_percent: float | None = None
+    estimated_fee_percent: float | None = Field(default=None, ge=0)
+    volume_24h_usd: float = Field(ge=0)
+    long_funding_rate_percent: float | None = None
+    short_funding_rate_percent: float | None = None
+    funding_rate_difference_percent: float | None = None
+    funding_impact: FundingImpact | None = None
+    liquidity_status: LiquidityStatus | None = None
+    depth_status: DepthStatus | None = None
+    selected_spread_percent: float
+    lower_line_percent: float
+    upper_line_percent: float
+
+
+class SpreadHistoryResponse(BaseModel):
+    symbol: str
+    long_exchange: str
+    short_exchange: str
+    limit: int = Field(ge=1)
+    returned_count: int = Field(ge=0)
+    rows: list[SpreadHistoryPoint]
+
+
 class SymbolSelectionConfig(BaseModel):
     mode: SymbolSelectionMode = "manual"
     min_volume_24h_usd: float | None = Field(default=None, ge=0)
@@ -255,6 +293,7 @@ class AppConfig(BaseModel):
     alerts: AlertConfig = Field(default_factory=AlertConfig)
     telegram: TelegramDisplaySettings = Field(default_factory=TelegramDisplaySettings)
     market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
+    history: SpreadHistoryConfig = Field(default_factory=SpreadHistoryConfig)
     config_source: str
 
 
