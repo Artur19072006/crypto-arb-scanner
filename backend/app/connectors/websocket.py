@@ -146,6 +146,67 @@ class BybitTickerWebSocketConnector(PublicWebSocketConnector):
         return parse_bybit_ticker_message(message, self._ticker_state_by_symbol)
 
 
+class OKXTickerWebSocketConnector(PublicWebSocketConnector):
+    name = "okx"
+    exchange_name = "OKX"
+    data_source = "okx_public_websocket"
+
+    def __init__(
+        self,
+        reconnect_seconds: int = 5,
+        base_url: str = "wss://ws.okx.com:8443/ws/v5/public",
+    ) -> None:
+        super().__init__(reconnect_seconds=reconnect_seconds)
+        self.base_url = base_url
+
+    async def listen(
+        self,
+        symbols: tuple[str, ...],
+        on_snapshot: SnapshotHandler,
+        on_connection_status: ConnectionStatusHandler,
+        stop_event: asyncio.Event,
+    ) -> None:
+        subscription_args = self._subscription_args(symbols)
+        if not subscription_args:
+            await on_connection_status(self.name, False, "No OKX WebSocket symbols selected")
+            return
+
+        subscribe_message = json.dumps(
+            {
+                "op": "subscribe",
+                "args": subscription_args,
+            }
+        )
+
+        while not stop_event.is_set():
+            try:
+                async with websockets.connect(self.base_url) as websocket:
+                    await websocket.send(subscribe_message)
+                    await on_connection_status(self.name, True, None)
+                    while not stop_event.is_set():
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1)
+                        except TimeoutError:
+                            continue
+
+                        snapshot = parse_okx_ticker_message(message)
+                        if snapshot is not None:
+                            await on_snapshot(snapshot)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await on_connection_status(self.name, False, str(exc))
+                await _sleep_until_stop(stop_event, self.reconnect_seconds)
+
+        await on_connection_status(self.name, False, None)
+
+    def _subscription_args(self, symbols: tuple[str, ...]) -> list[dict[str, str]]:
+        return [
+            {"channel": "tickers", "instId": inst_id}
+            for inst_id in _okx_inst_ids(symbols)
+        ]
+
+
 def parse_binance_book_ticker_message(message: str | bytes) -> MarketSnapshot | None:
     payload = _json_message(message)
     if not isinstance(payload, dict):
@@ -240,6 +301,54 @@ def parse_bybit_ticker_message(
     )
 
 
+def parse_okx_ticker_message(message: str | bytes) -> MarketSnapshot | None:
+    payload = _json_message(message)
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("event") or payload.get("op"):
+        return None
+
+    data = payload.get("data")
+    if not isinstance(data, list) or not data:
+        return None
+    ticker = data[0]
+    if not isinstance(ticker, dict):
+        return None
+    if ticker.get("instType") not in (None, "SWAP"):
+        return None
+
+    inst_id = str(ticker.get("instId") or "")
+    if not inst_id.endswith("-USDT-SWAP"):
+        return None
+
+    symbol = normalize_symbol(inst_id, "OKX")
+    if not symbol:
+        return None
+
+    try:
+        best_bid = float(ticker["bidPx"])
+        best_ask = float(ticker["askPx"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if best_bid <= 0 or best_ask <= 0:
+        return None
+
+    return MarketSnapshot(
+        exchange="OKX",
+        symbol=symbol,
+        best_bid=best_bid,
+        best_bid_size=_float_or_zero(ticker.get("bidSz")),
+        best_ask=best_ask,
+        best_ask_size=_float_or_zero(ticker.get("askSz")),
+        volume_24h_usd=_okx_volume_24h_usd(ticker),
+        funding_rate_percent=0,
+        next_funding_time=None,
+        timestamp=_datetime_from_millis(ticker.get("ts")) or datetime.now(timezone.utc),
+        source="websocket",
+    )
+
+
 def build_public_websocket_connectors(
     exchanges: tuple[str, ...],
     reconnect_seconds: int,
@@ -255,6 +364,12 @@ def build_public_websocket_connectors(
     if "bybit" in enabled:
         connectors.append(
             BybitTickerWebSocketConnector(
+                reconnect_seconds=reconnect_seconds,
+            )
+        )
+    if "okx" in enabled:
+        connectors.append(
+            OKXTickerWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
             )
         )
@@ -290,6 +405,23 @@ def _normalize_symbols(symbols: tuple[str, ...], exchange: str) -> tuple[str, ..
     )
 
 
+def _okx_inst_ids(symbols: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            inst_id
+            for inst_id in (_okx_inst_id(raw_symbol) for raw_symbol in symbols)
+            if inst_id
+        )
+    )
+
+
+def _okx_inst_id(symbol: str) -> str:
+    normalized = normalize_symbol(symbol, "OKX")
+    if not normalized.endswith("USDT") or len(normalized) <= 4:
+        return ""
+    return f"{normalized[:-4]}-USDT-SWAP"
+
+
 def _float_or_zero(value: object) -> float:
     if value in (None, ""):
         return 0.0
@@ -298,6 +430,12 @@ def _float_or_zero(value: object) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _okx_volume_24h_usd(ticker: dict[str, Any]) -> float:
+    last_price = _float_or_zero(ticker.get("last"))
+    base_volume = _float_or_zero(ticker.get("volCcy24h"))
+    return last_price * base_volume
 
 
 async def _sleep_until_stop(stop_event: asyncio.Event, seconds: int) -> None:

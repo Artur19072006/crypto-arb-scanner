@@ -185,7 +185,7 @@ class TelegramDisplaySettings(BaseModel):
 
 class WebSocketMarketDataConfig(BaseModel):
     enabled: bool = False
-    exchanges: tuple[str, ...] = ("binance", "bybit")
+    exchanges: tuple[str, ...] = ("binance", "bybit", "okx")
     reconnect_seconds: int = Field(default=5, ge=1)
     stale_after_seconds: int = Field(default=20, ge=1)
 

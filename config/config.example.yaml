@@ -32,6 +32,7 @@ market_data:
     exchanges:
       - binance
       - bybit
+      - okx
     reconnect_seconds: 5
     stale_after_seconds: 20
 

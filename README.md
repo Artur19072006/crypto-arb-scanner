@@ -232,7 +232,7 @@ market_data:
     enabled: false
 ```
 
-To test public WebSocket top-of-book updates for Binance and Bybit, keep `data_source_mode: live` and enable:
+To test public WebSocket top-of-book updates for Binance, Bybit, and OKX, keep `data_source_mode: live` and enable:
 
 ```yaml
 market_data:
@@ -242,11 +242,12 @@ market_data:
     exchanges:
       - binance
       - bybit
+      - okx
     reconnect_seconds: 5
     stale_after_seconds: 20
 ```
 
-WebSocket mode still uses REST for symbol selection, funding context, depth checks, OKX live data, and fallback when a WebSocket snapshot is missing or stale.
+WebSocket mode still uses REST for symbol selection, funding context, depth checks, and fallback when a WebSocket snapshot is missing or stale.
 
 ## Optional Depth Check
 

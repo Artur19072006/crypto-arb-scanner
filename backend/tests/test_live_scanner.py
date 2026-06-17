@@ -133,6 +133,90 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opportunities[0].ask_price, 100.0)
         self.assertEqual(opportunities[0].bid_price, 101.0)
 
+    async def test_websocket_mode_can_use_fresh_okx_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=99.0, ask=100.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            okx_snapshot=_snapshot("OKX", bid=98.0, ask=103.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "OKX",
+                    bid=89.0,
+                    ask=90.0,
+                    volume_24h_usd=0,
+                    funding_rate_percent=0,
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_okx=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "OKX")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 90.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+        self.assertEqual(opportunities[0].volume_24h_usd, 1_000_000)
+
+    async def test_websocket_mode_falls_back_to_okx_rest_when_okx_websocket_is_stale(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=94.0, ask=95.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            okx_snapshot=_snapshot("OKX", bid=98.0, ask=100.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "OKX",
+                    bid=89.0,
+                    ask=90.0,
+                    timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_okx=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Binance")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 95.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
 
 class StaticSnapshotConnector(ExchangeConnector):
     data_source = "test_rest"
@@ -161,19 +245,31 @@ class NoopWebSocketManager:
 def _live_registry(
     binance_snapshot: MarketSnapshot,
     bybit_snapshot: MarketSnapshot,
+    okx_snapshot: MarketSnapshot | None = None,
 ):
     from app.connectors.registry import ConnectorRegistry
 
     registry = ConnectorRegistry()
     registry.register(StaticSnapshotConnector("binance", binance_snapshot))
     registry.register(StaticSnapshotConnector("bybit", bybit_snapshot))
+    if okx_snapshot is not None:
+        registry.register(StaticSnapshotConnector("okx", okx_snapshot))
     return registry
 
 
 def _live_config(
     market_data_mode: str,
     websocket_enabled: bool,
+    include_okx: bool = False,
 ):
+    connectors = ["binance", "bybit"]
+    exchanges = ["Binance", "Bybit"]
+    websocket_exchanges = ["binance", "bybit"]
+    if include_okx:
+        connectors.append("okx")
+        exchanges.append("OKX")
+        websocket_exchanges.append("okx")
+
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         config_path = root / "config.yaml"
@@ -181,8 +277,7 @@ def _live_config(
             f"""
 data_source_mode: live
 enabled_connectors:
-  - binance
-  - bybit
+{_yaml_list(connectors)}
 max_symbols: 1
 symbol_allowlist:
   - BTCUSDT
@@ -191,15 +286,13 @@ filters:
   min_net_spread: -10
   min_volume_24h_usd: 0
   enabled_exchanges:
-    - Binance
-    - Bybit
+{_yaml_list(exchanges, indent=4)}
 market_data:
   mode: {market_data_mode}
   websocket:
     enabled: {str(websocket_enabled).lower()}
     exchanges:
-      - binance
-      - bybit
+{_yaml_list(websocket_exchanges, indent=6)}
     reconnect_seconds: 1
     stale_after_seconds: 20
 """,
@@ -209,6 +302,11 @@ market_data:
             config_path=config_path,
             example_path=root / "config.example.yaml",
         )
+
+
+def _yaml_list(values: list[str], indent: int = 2) -> str:
+    prefix = " " * indent
+    return "\n".join(f"{prefix}- {value}" for value in values)
 
 
 def _snapshot(

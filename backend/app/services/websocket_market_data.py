@@ -186,7 +186,7 @@ def _desired_symbols(
     return {
         connector_name: tuple(dict.fromkeys(symbols))
         for connector_name, symbols in symbols_by_connector.items()
-        if connector_name in {"binance", "bybit"}
+        if connector_name in {"binance", "bybit", "okx"}
         and connector_name in enabled
         and symbols
     }
@@ -198,4 +198,6 @@ def _connector_name_from_exchange(exchange: str) -> str:
         return "binance"
     if normalized == "bybit":
         return "bybit"
+    if normalized == "okx":
+        return "okx"
     return normalized or "unknown"

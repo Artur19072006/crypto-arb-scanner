@@ -124,7 +124,7 @@ filters:
         self.assertEqual(config.alerts.max_alerts_per_scan, 5)
         self.assertEqual(config.market_data.mode, "rest")
         self.assertFalse(config.market_data.websocket.enabled)
-        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit"))
+        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit", "okx"))
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 5)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 20)
         self.assertFalse(config.telegram.enabled)
@@ -290,7 +290,7 @@ market_data:
 
         self.assertEqual(config.market_data.mode, "websocket")
         self.assertTrue(config.market_data.websocket.enabled)
-        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit"))
+        self.assertEqual(config.market_data.websocket.exchanges, ("binance", "bybit", "okx"))
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 7)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 15)
 

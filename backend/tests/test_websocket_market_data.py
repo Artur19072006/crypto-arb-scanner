@@ -43,6 +43,35 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stopped_status.active_exchanges, ())
         self.assertEqual(stopped_status.connected, {})
 
+    async def test_okx_websocket_snapshot_updates_cache_and_status(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds: [
+                OneShotWebSocketConnector("okx", "OKX")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("okx",),
+                websocket_exchanges=("okx",),
+            ),
+            {"okx": ("BTCUSDT",)},
+        )
+        await _wait_for_snapshot(cache)
+        status = await manager.status()
+
+        snapshots = await cache.get_all_snapshots()
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].exchange, "OKX")
+        self.assertEqual(snapshots[0].symbol, "BTCUSDT")
+        self.assertEqual(status.active_exchanges, ("okx",))
+        self.assertTrue(status.connected["okx"])
+
+        await manager.stop()
+
     async def test_websocket_disabled_stops_running_tasks(self) -> None:
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(
@@ -109,12 +138,15 @@ async def _wait_for_snapshot(cache: MarketDataCache) -> None:
     raise AssertionError("Timed out waiting for websocket snapshot")
 
 
-def _live_websocket_config():
+def _live_websocket_config(
+    enabled_connectors: tuple[str, ...] = ("binance",),
+    websocket_exchanges: tuple[str, ...] = ("binance",),
+):
     return _load_config(
-        """
+        f"""
 data_source_mode: live
 enabled_connectors:
-  - binance
+{_yaml_list(enabled_connectors)}
 symbol_allowlist:
   - BTCUSDT
 market_data:
@@ -122,7 +154,7 @@ market_data:
   websocket:
     enabled: true
     exchanges:
-      - binance
+{_yaml_list(websocket_exchanges, indent=6)}
     reconnect_seconds: 1
     stale_after_seconds: 20
 """
@@ -154,6 +186,11 @@ def _load_config(contents: str):
             config_path=config_path,
             example_path=root / "config.example.yaml",
         )
+
+
+def _yaml_list(values: tuple[str, ...], indent: int = 2) -> str:
+    prefix = " " * indent
+    return "\n".join(f"{prefix}- {value}" for value in values)
 
 
 if __name__ == "__main__":

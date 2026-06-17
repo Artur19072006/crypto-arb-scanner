@@ -4,8 +4,10 @@ import unittest
 from app.connectors.websocket import (
     BinanceBookTickerWebSocketConnector,
     BybitTickerWebSocketConnector,
+    OKXTickerWebSocketConnector,
     parse_binance_book_ticker_message,
     parse_bybit_ticker_message,
+    parse_okx_ticker_message,
 )
 
 
@@ -169,6 +171,106 @@ class WebSocketConnectorParsingTests(unittest.TestCase):
         )
 
         self.assertIsNone(snapshot)
+
+    def test_okx_ticker_message_maps_top_of_book_snapshot(self) -> None:
+        snapshot = parse_okx_ticker_message(
+            json.dumps(
+                {
+                    "arg": {
+                        "channel": "tickers",
+                        "instId": "BTC-USDT-SWAP",
+                    },
+                    "data": [
+                        {
+                            "instType": "SWAP",
+                            "instId": "BTC-USDT-SWAP",
+                            "last": "65012.00",
+                            "bidPx": "65010.50",
+                            "bidSz": "1.20",
+                            "askPx": "65011.00",
+                            "askSz": "0.80",
+                            "volCcy24h": "10.5",
+                            "ts": "1710000000000",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.exchange, "OKX")
+        self.assertEqual(snapshot.symbol, "BTCUSDT")
+        self.assertEqual(snapshot.best_bid, 65010.50)
+        self.assertEqual(snapshot.best_bid_size, 1.20)
+        self.assertEqual(snapshot.best_ask, 65011.00)
+        self.assertEqual(snapshot.best_ask_size, 0.80)
+        self.assertEqual(snapshot.volume_24h_usd, 682626.0)
+        self.assertEqual(snapshot.source, "websocket")
+
+    def test_okx_ticker_message_normalizes_swap_symbol(self) -> None:
+        snapshot = parse_okx_ticker_message(
+            json.dumps(
+                {
+                    "data": [
+                        {
+                            "instId": "ETH-USDT-SWAP",
+                            "bidPx": "3500.00",
+                            "bidSz": "2.0",
+                            "askPx": "3501.00",
+                            "askSz": "3.0",
+                            "ts": "1710000000000",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.symbol, "ETHUSDT")
+
+    def test_okx_ticker_ignores_non_usdt_swap_symbol(self) -> None:
+        snapshot = parse_okx_ticker_message(
+            json.dumps(
+                {
+                    "data": [
+                        {
+                            "instType": "SWAP",
+                            "instId": "BTC-USD-SWAP",
+                            "bidPx": "65010.50",
+                            "askPx": "65011.00",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertIsNone(snapshot)
+
+    def test_okx_subscription_ack_is_ignored(self) -> None:
+        snapshot = parse_okx_ticker_message(
+            json.dumps(
+                {
+                    "event": "subscribe",
+                    "arg": {
+                        "channel": "tickers",
+                        "instId": "BTC-USDT-SWAP",
+                    },
+                }
+            )
+        )
+
+        self.assertIsNone(snapshot)
+
+    def test_okx_inst_ids_use_swap_symbol_format(self) -> None:
+        connector = OKXTickerWebSocketConnector()
+
+        self.assertEqual(
+            connector._subscription_args(("BTCUSDT", "ETH-USDT-SWAP")),
+            [
+                {"channel": "tickers", "instId": "BTC-USDT-SWAP"},
+                {"channel": "tickers", "instId": "ETH-USDT-SWAP"},
+            ],
+        )
 
 
 if __name__ == "__main__":
