@@ -75,6 +75,18 @@ After the backend virtual environment and frontend dependencies are installed, t
 .\scripts\start-dev.ps1
 ```
 
+To stop local dev servers listening on the default backend/frontend ports:
+
+```powershell
+.\scripts\stop-dev.ps1
+```
+
+You can also pass explicit ports:
+
+```powershell
+.\scripts\stop-dev.ps1 -Ports 8000,5173,5174
+```
+
 `start-backend.ps1` loads environment variables from a local `.env` file when it exists, without printing the values. Keep real Telegram credentials only in `.env` or your shell environment. `.env.example` should contain safe placeholders only:
 
 ```text
