@@ -59,6 +59,31 @@ Mock opportunities endpoint:
 http://127.0.0.1:8000/api/opportunities
 ```
 
+## Local Development Scripts
+
+After the backend virtual environment and frontend dependencies are installed, these PowerShell helpers can start the app from the repository root:
+
+```powershell
+.\scripts\start-backend.ps1
+```
+
+```powershell
+.\scripts\start-frontend.ps1
+```
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+`start-backend.ps1` loads environment variables from a local `.env` file when it exists, without printing the values. Keep real Telegram credentials only in `.env` or your shell environment. `.env.example` should contain safe placeholders only:
+
+```text
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+`start-dev.ps1` opens the backend and frontend in separate PowerShell windows.
+
 ## Frontend Startup
 
 Open a second terminal from the repository root:
