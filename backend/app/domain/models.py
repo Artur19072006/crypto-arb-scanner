@@ -10,6 +10,7 @@ FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
 SymbolSelectionMode = Literal["manual", "auto"]
 AlertSeverity = Literal["Info", "Watch", "Strong"]
+TelegramParseMode = Literal["HTML", "Markdown", "MarkdownV2"]
 OpportunitySortBy = Literal[
     "raw_spread",
     "net_spread",
@@ -154,9 +155,20 @@ class AlertStatusResponse(BaseModel):
     last_evaluated_at: datetime | None
 
 
+class TelegramStatusResponse(BaseModel):
+    enabled: bool
+    configured: bool
+    last_sent_at: datetime | None
+    sent_count: int = Field(ge=0)
+    last_error: str | None
+
+
 class TelegramDisplaySettings(BaseModel):
     enabled: bool = False
-    alert_cooldown_seconds: int = Field(default=300, ge=0)
+    bot_token_env: str = "TELEGRAM_BOT_TOKEN"
+    chat_id_env: str = "TELEGRAM_CHAT_ID"
+    parse_mode: TelegramParseMode = "HTML"
+    timeout_seconds: int = Field(default=10, ge=1)
 
 
 class SymbolSelectionConfig(BaseModel):

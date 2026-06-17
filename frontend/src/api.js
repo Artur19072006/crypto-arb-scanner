@@ -53,6 +53,16 @@ export async function fetchAlertStatus() {
   return response.json();
 }
 
+export async function fetchTelegramStatus() {
+  const response = await fetch("/api/telegram/status");
+
+  if (!response.ok) {
+    throw new Error(`Failed to load Telegram status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function fetchSettings() {
   const response = await fetch("/api/settings");
 

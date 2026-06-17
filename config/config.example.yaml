@@ -79,6 +79,7 @@ alerts:
 
 telegram:
   enabled: false
-  alert_cooldown_seconds: 300
   bot_token_env: TELEGRAM_BOT_TOKEN
   chat_id_env: TELEGRAM_CHAT_ID
+  parse_mode: HTML
+  timeout_seconds: 10

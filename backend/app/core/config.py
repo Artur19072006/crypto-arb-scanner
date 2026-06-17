@@ -160,12 +160,21 @@ def _load_filters(raw_filters: Any) -> ScannerFilters:
 
 
 def _load_telegram_settings(raw_telegram: Any) -> TelegramDisplaySettings:
+    defaults = TelegramDisplaySettings()
     if not isinstance(raw_telegram, dict):
-        return TelegramDisplaySettings()
+        return defaults
 
     return TelegramDisplaySettings(
         enabled=bool(raw_telegram.get("enabled", False)),
-        alert_cooldown_seconds=int(raw_telegram.get("alert_cooldown_seconds", 300)),
+        bot_token_env=str(raw_telegram.get("bot_token_env", defaults.bot_token_env)),
+        chat_id_env=str(raw_telegram.get("chat_id_env", defaults.chat_id_env)),
+        parse_mode=_telegram_parse_mode(
+            raw_telegram.get("parse_mode", defaults.parse_mode)
+        ),
+        timeout_seconds=max(
+            1,
+            int(raw_telegram.get("timeout_seconds", defaults.timeout_seconds)),
+        ),
     )
 
 
@@ -381,3 +390,10 @@ def _depth_status_tuple(value: Any) -> tuple[str, ...]:
     statuses = _string_tuple(value)
     parsed = tuple(status for status in statuses if status in allowed_statuses)
     return parsed or AlertConfig().require_depth_status
+
+
+def _telegram_parse_mode(value: Any) -> str:
+    parse_mode = str(value or "HTML")
+    if parse_mode in {"HTML", "Markdown", "MarkdownV2"}:
+        return parse_mode
+    return "HTML"

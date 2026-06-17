@@ -14,6 +14,7 @@ from app.domain.models import (
     ScannerFilters,
     ScannerStatus,
     SortDirection,
+    TelegramStatusResponse,
 )
 from app.services.live_scanner import active_connector_names, active_data_sources
 from app.services.runtime import (
@@ -21,6 +22,7 @@ from app.services.runtime import (
     market_data_cache,
     opportunity_store,
     symbol_universe_builder,
+    telegram_notifier,
 )
 from app.services.symbols import normalize_symbol
 from app.services.spread_engine import filter_opportunities
@@ -98,6 +100,12 @@ async def list_alert_history(
 async def get_alert_status() -> AlertStatusResponse:
     config = get_app_config()
     return await alert_engine.get_status(config.alerts)
+
+
+@router.get("/telegram/status", response_model=TelegramStatusResponse)
+async def get_telegram_status() -> TelegramStatusResponse:
+    config = get_app_config()
+    return await telegram_notifier.get_status(config.telegram)
 
 
 DEFAULT_OPPORTUNITY_LIMIT = 100

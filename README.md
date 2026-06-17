@@ -2,7 +2,7 @@
 
 Local-first scanner skeleton for USDT perpetual futures arbitrage opportunities.
 
-This version defaults to mock bid/ask data. Optional live mode uses Binance, Bybit, and OKX public market-data endpoints only. It does not place trades, use API keys, call private/account endpoints, or send Telegram messages.
+This version defaults to mock bid/ask data. Optional live mode uses Binance, Bybit, and OKX public market-data endpoints only. It does not place trades, use exchange API keys, or call private/account endpoints. Telegram notifications are optional and only send Alert Engine candidates.
 
 ## Current Scope
 
@@ -10,8 +10,8 @@ This version defaults to mock bid/ask data. Optional live mode uses Binance, Byb
 - Mock opportunity generation from bid/ask snapshots
 - React + Vite frontend with a table view
 - SQLite-ready folder and database placeholder
-- Config example for fees, filters, blacklist, and Telegram settings
-- Placeholder Telegram notifier that does nothing without future implementation
+- Config example for fees, filters, blacklist, alert rules, and Telegram settings
+- Optional Telegram notifier for active Alert Engine candidates
 - Connector registry with fake connector in mock mode and optional Binance/Bybit/OKX public connectors in live mode
 - Optional public REST order book depth validation for top opportunities
 - Internal Alert Engine v1 for selecting notification-worthy opportunities without sending messages
@@ -26,7 +26,7 @@ backend/
     core/             Settings placeholder
     db/               SQLite placeholder
     models/           API response models
-    notifications/    Telegram placeholder
+    notifications/    Telegram notifier
     services/         Mock scanner logic
 frontend/
   src/                React app
@@ -93,7 +93,7 @@ Copy-Item .env.example .env
 Copy-Item config\config.example.yaml config\config.yaml
 ```
 
-Telegram settings are placeholders for now. Do not commit real bot tokens or chat IDs.
+Telegram settings use environment variable names only. Do not commit real bot tokens or chat IDs.
 
 The backend reads `config/config.yaml` when it exists. If it does not exist, it falls back to `config/config.example.yaml`, then to built-in safe defaults.
 
@@ -123,7 +123,7 @@ http://127.0.0.1:8000/api/status
 - Symbol normalization currently supports mock symbols such as `BTCUSDT`, `ETHUSDT`, and `SOLUSDT`.
 - Exchange format examples: Binance `BTCUSDT`, Bybit `BTCUSDT`, OKX `BTC-USDT-SWAP`, Gate `BTC_USDT`.
 
-Private/account endpoints, API keys, order execution, and automatic trading are intentionally not implemented.
+Private/account endpoints, exchange API keys, order execution, and automatic trading are intentionally not implemented.
 
 ## Public Live Mode
 
@@ -210,7 +210,7 @@ When enabled, rows with depth data show status `OK`, `Thin`, `Insufficient`, or 
 
 ## Alert Engine
 
-Alert Engine v1 is an internal scanner-only layer. It evaluates the latest arbitrage opportunities and selects candidates that would be worth notifying about later. It does not send Telegram messages, play sounds, place trades, use exchange API keys, or call private/account endpoints.
+Alert Engine v1 is an internal scanner-only layer. It evaluates the latest arbitrage opportunities and selects candidates that are worth notifying about. It does not place trades, use exchange API keys, or call private/account endpoints.
 
 Alert filtering uses:
 
@@ -248,7 +248,39 @@ http://127.0.0.1:8000/api/alerts/history
 http://127.0.0.1:8000/api/alerts/status
 ```
 
-Telegram sending is the next implementation step. This version intentionally prepares the candidate selection layer only.
+## Telegram Notifications
+
+Telegram Notifier v1 sends messages only for active Alert Engine candidates. It never sends raw opportunities directly, never sends suppressed alerts, and keeps an in-memory set of sent alert IDs so the same alert ID is not sent twice. Alert Engine cooldown remains the main duplicate-control layer for repeated scans.
+
+Set credentials as environment variables. For PowerShell:
+
+```powershell
+$env:TELEGRAM_BOT_TOKEN="123456:replace-with-your-token"
+$env:TELEGRAM_CHAT_ID="123456789"
+```
+
+You can also copy `.env.example` to `.env` for local development and fill in local values. Do not commit `.env`.
+
+Enable Telegram in `config/config.yaml`:
+
+```yaml
+telegram:
+  enabled: true
+  bot_token_env: TELEGRAM_BOT_TOKEN
+  chat_id_env: TELEGRAM_CHAT_ID
+  parse_mode: HTML
+  timeout_seconds: 10
+```
+
+Telegram status is available at:
+
+```text
+http://127.0.0.1:8000/api/telegram/status
+```
+
+The status endpoint reports whether Telegram is enabled/configured, last send time, sent count, and last error. It never returns the bot token or chat ID.
+
+Safety note: Telegram is notification-only. It does not create orders, execute trades, or access exchange account/private APIs.
 
 Binance USD-M Futures public endpoints:
 

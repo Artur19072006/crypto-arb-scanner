@@ -167,7 +167,7 @@ h1 {
 
 .alerts-heading {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(110px, 160px));
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(110px, 160px));
   gap: 12px;
 }
 
@@ -224,6 +224,12 @@ h1 {
 .alerts-empty {
   margin: 12px 0 0;
   color: #6c746d;
+  font-weight: 700;
+}
+
+.telegram-error {
+  margin: 12px 0 0;
+  color: #96301f;
   font-weight: 700;
 }
 

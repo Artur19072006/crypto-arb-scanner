@@ -5,7 +5,8 @@ import {
   fetchAlertStatus,
   fetchOpportunities,
   fetchSettings,
-  fetchStatus
+  fetchStatus,
+  fetchTelegramStatus
 } from "./api.js";
 import {
   formatDateTime,
@@ -19,6 +20,7 @@ function App() {
   const [opportunityMeta, setOpportunityMeta] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [alertStatus, setAlertStatus] = useState(null);
+  const [telegramStatus, setTelegramStatus] = useState(null);
   const [settings, setSettings] = useState(null);
   const [scannerStatus, setScannerStatus] = useState(null);
   const [defaultFilters, setDefaultFilters] = useState(createEmptyFilters());
@@ -77,18 +79,21 @@ function App() {
           loadedOpportunities,
           loadedScannerStatus,
           loadedAlerts,
-          loadedAlertStatus
+          loadedAlertStatus,
+          loadedTelegramStatus
         ] = await Promise.all([
           fetchOpportunities(appliedFilters),
           fetchStatus(),
           fetchAlerts(),
-          fetchAlertStatus()
+          fetchAlertStatus(),
+          fetchTelegramStatus()
         ]);
         if (isMounted) {
           setOpportunities(loadedOpportunities.opportunities ?? []);
           setOpportunityMeta(loadedOpportunities);
           setAlerts(loadedAlerts.alerts ?? []);
           setAlertStatus(loadedAlertStatus);
+          setTelegramStatus(loadedTelegramStatus);
           setScannerStatus(loadedScannerStatus);
           setRequestStatus("ready");
         }
@@ -237,6 +242,7 @@ function App() {
 
       <AlertsPanel
         alertStatus={alertStatus}
+        telegramStatus={telegramStatus}
         alerts={alerts}
       />
 
@@ -268,7 +274,7 @@ function App() {
   );
 }
 
-function AlertsPanel({ alertStatus, alerts }) {
+function AlertsPanel({ alertStatus, telegramStatus, alerts }) {
   const visibleAlerts = Array.isArray(alerts) ? alerts.slice(0, 5) : [];
 
   return (
@@ -286,7 +292,18 @@ function AlertsPanel({ alertStatus, alerts }) {
           <span className="metric-label">Suppressed</span>
           <strong>{alertStatus?.suppressed_count ?? 0}</strong>
         </div>
+        <div>
+          <span className="metric-label">Telegram</span>
+          <strong>{formatTelegramStatusLabel(telegramStatus)}</strong>
+        </div>
+        <div>
+          <span className="metric-label">Sent</span>
+          <strong>{telegramStatus?.sent_count ?? 0}</strong>
+        </div>
       </div>
+      {telegramStatus?.last_error && (
+        <p className="telegram-error">Telegram: {telegramStatus.last_error}</p>
+      )}
       {visibleAlerts.length > 0 ? (
         <div className="alerts-list">
           {visibleAlerts.map((alert) => (
@@ -733,6 +750,16 @@ function formatAlertStatusLabel(alertStatus) {
   }
 
   return alertStatus.enabled ? "Enabled" : "Disabled";
+}
+
+function formatTelegramStatusLabel(telegramStatus) {
+  if (!telegramStatus) {
+    return "Loading";
+  }
+  if (!telegramStatus.enabled) {
+    return "Disabled";
+  }
+  return telegramStatus.configured ? "Configured" : "Not configured";
 }
 
 function formatOptionalPercent(value) {

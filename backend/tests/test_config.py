@@ -27,7 +27,10 @@ filters:
     - Binance
 telegram:
   enabled: true
-  alert_cooldown_seconds: 45
+  bot_token_env: CUSTOM_TELEGRAM_TOKEN
+  chat_id_env: CUSTOM_TELEGRAM_CHAT
+  parse_mode: HTML
+  timeout_seconds: 7
   bot_token: should-not-be-exposed
 """,
                 encoding="utf-8",
@@ -56,7 +59,10 @@ fees:
         self.assertEqual(config.symbol_selection.max_symbols, 10)
         self.assertEqual(config.symbol_selection.min_exchanges_required, 2)
         self.assertTrue(config.telegram.enabled)
-        self.assertEqual(config.telegram.alert_cooldown_seconds, 45)
+        self.assertEqual(config.telegram.bot_token_env, "CUSTOM_TELEGRAM_TOKEN")
+        self.assertEqual(config.telegram.chat_id_env, "CUSTOM_TELEGRAM_CHAT")
+        self.assertEqual(config.telegram.parse_mode, "HTML")
+        self.assertEqual(config.telegram.timeout_seconds, 7)
         self.assertFalse(hasattr(config.telegram, "bot_token"))
 
     def test_falls_back_to_example_when_config_yaml_is_missing(self) -> None:
@@ -116,6 +122,11 @@ filters:
         self.assertEqual(config.alerts.min_volume_24h_usd, 400_000)
         self.assertEqual(config.alerts.cooldown_seconds, 300)
         self.assertEqual(config.alerts.max_alerts_per_scan, 5)
+        self.assertFalse(config.telegram.enabled)
+        self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
+        self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
+        self.assertEqual(config.telegram.parse_mode, "HTML")
+        self.assertEqual(config.telegram.timeout_seconds, 10)
 
     def test_loads_live_data_source_mode_as_reserved_config_value(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -246,6 +257,37 @@ alerts:
         self.assertEqual(config.alerts.min_volume_24h_usd, 750_000)
         self.assertEqual(config.alerts.cooldown_seconds, 120)
         self.assertEqual(config.alerts.max_alerts_per_scan, 3)
+
+    def test_loads_telegram_config_without_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+telegram:
+  enabled: true
+  bot_token_env: TELEGRAM_BOT_TOKEN
+  chat_id_env: TELEGRAM_CHAT_ID
+  parse_mode: Markdown
+  timeout_seconds: 12
+  bot_token: should-not-be-exposed
+  chat_id: should-not-be-exposed
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertTrue(config.telegram.enabled)
+        self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
+        self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
+        self.assertEqual(config.telegram.parse_mode, "Markdown")
+        self.assertEqual(config.telegram.timeout_seconds, 12)
+        self.assertFalse(hasattr(config.telegram, "bot_token"))
+        self.assertFalse(hasattr(config.telegram, "chat_id"))
 
     def test_live_data_source_mode_defaults_to_public_connectors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

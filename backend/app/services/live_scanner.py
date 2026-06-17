@@ -12,6 +12,7 @@ from app.services.runtime import (
     market_data_cache,
     opportunity_store,
     symbol_universe_builder,
+    telegram_notifier,
 )
 from app.services.depth_check import apply_depth_checks
 from app.services.spread_engine import calculate_opportunities
@@ -103,11 +104,12 @@ async def refresh_mock_scanner_once(
     await store.update_opportunities(opportunities)
     try:
         if config.alerts.enabled:
-            await alert_engine.evaluate(
+            active_alerts = await alert_engine.evaluate(
                 opportunities,
                 config.alerts,
                 depth_check_enabled=config.depth_check.enabled,
             )
+            await telegram_notifier.send_alerts(active_alerts, config.telegram)
         else:
             await alert_engine.clear_active()
     except Exception as exc:
