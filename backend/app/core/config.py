@@ -298,7 +298,7 @@ def _load_websocket_market_data(raw_websocket: Any) -> WebSocketMarketDataConfig
             for exchange in _string_tuple(
                 raw_websocket.get("exchanges", defaults.exchanges)
             )
-            if exchange.lower().strip() in {"binance", "bybit", "okx"}
+            if exchange.lower().strip() in {"binance", "bybit", "okx", "bitget"}
         )
     )
 

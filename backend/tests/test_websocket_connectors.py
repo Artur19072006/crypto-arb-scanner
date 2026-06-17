@@ -3,9 +3,11 @@ import unittest
 
 from app.connectors.websocket import (
     BinanceBookTickerWebSocketConnector,
+    BitgetTickerWebSocketConnector,
     BybitTickerWebSocketConnector,
     OKXTickerWebSocketConnector,
     parse_binance_book_ticker_message,
+    parse_bitget_ticker_message,
     parse_bybit_ticker_message,
     parse_okx_ticker_message,
 )
@@ -269,6 +271,133 @@ class WebSocketConnectorParsingTests(unittest.TestCase):
             [
                 {"channel": "tickers", "instId": "BTC-USDT-SWAP"},
                 {"channel": "tickers", "instId": "ETH-USDT-SWAP"},
+            ],
+        )
+
+    def test_bitget_ticker_message_maps_top_of_book_snapshot(self) -> None:
+        snapshot = parse_bitget_ticker_message(
+            json.dumps(
+                {
+                    "arg": {
+                        "instType": "USDT-FUTURES",
+                        "channel": "ticker",
+                        "instId": "BTCUSDT",
+                    },
+                    "action": "snapshot",
+                    "data": [
+                        {
+                            "instId": "BTCUSDT",
+                            "symbol": "btcusdt",
+                            "bidPr": "65010.50",
+                            "bidSz": "1.20",
+                            "askPr": "65011.00",
+                            "askSz": "0.80",
+                            "quoteVolume": "123456789.10",
+                            "usdtVolume": "123456790.20",
+                            "fundingRate": "0.00010000",
+                            "nextFundingTime": "1710003600000",
+                            "symbolType": "1",
+                            "ts": "1710000000000",
+                        }
+                    ],
+                    "ts": 1710000000001,
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.exchange, "Bitget")
+        self.assertEqual(snapshot.symbol, "BTCUSDT")
+        self.assertEqual(snapshot.best_bid, 65010.50)
+        self.assertEqual(snapshot.best_bid_size, 1.20)
+        self.assertEqual(snapshot.best_ask, 65011.00)
+        self.assertEqual(snapshot.best_ask_size, 0.80)
+        self.assertEqual(snapshot.volume_24h_usd, 123456790.20)
+        self.assertEqual(snapshot.funding_rate_percent, 0.01)
+        self.assertIsNotNone(snapshot.next_funding_time)
+        self.assertEqual(snapshot.source, "websocket")
+
+    def test_bitget_ticker_message_normalizes_symbol_from_arg_inst_id(self) -> None:
+        snapshot = parse_bitget_ticker_message(
+            json.dumps(
+                {
+                    "arg": {
+                        "instType": "USDT-FUTURES",
+                        "channel": "ticker",
+                        "instId": "ETHUSDT",
+                    },
+                    "data": [
+                        {
+                            "bidPr": "3500.00",
+                            "askPr": "3501.00",
+                            "bidSz": "2.0",
+                            "askSz": "3.0",
+                            "ts": "1710000000000",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.symbol, "ETHUSDT")
+
+    def test_bitget_ticker_ignores_delivery_symbol_type(self) -> None:
+        snapshot = parse_bitget_ticker_message(
+            json.dumps(
+                {
+                    "arg": {
+                        "instType": "USDT-FUTURES",
+                        "channel": "ticker",
+                        "instId": "BTCUSDT_260327",
+                    },
+                    "data": [
+                        {
+                            "instId": "BTCUSDT_260327",
+                            "bidPr": "65010.50",
+                            "askPr": "65011.00",
+                            "symbolType": "2",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertIsNone(snapshot)
+
+    def test_bitget_subscription_ack_and_pong_are_ignored(self) -> None:
+        self.assertIsNone(parse_bitget_ticker_message("pong"))
+        self.assertIsNone(
+            parse_bitget_ticker_message(
+                json.dumps(
+                    {
+                        "event": "subscribe",
+                        "arg": {
+                            "instType": "USDT-FUTURES",
+                            "channel": "ticker",
+                            "instId": "BTCUSDT",
+                        },
+                    }
+                )
+            )
+        )
+
+    def test_bitget_subscription_args_use_public_futures_ticker_channel(self) -> None:
+        connector = BitgetTickerWebSocketConnector()
+
+        self.assertEqual(
+            connector._subscription_args(("btcusdt", "ETHUSDT", "BTCUSDC", "BTCUSDT_260327")),
+            [
+                {
+                    "instType": "USDT-FUTURES",
+                    "channel": "ticker",
+                    "instId": "BTCUSDT",
+                },
+                {
+                    "instType": "USDT-FUTURES",
+                    "channel": "ticker",
+                    "instId": "ETHUSDT",
+                },
             ],
         )
 

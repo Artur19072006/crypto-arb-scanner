@@ -233,7 +233,7 @@ market_data:
     enabled: false
 ```
 
-To test public WebSocket top-of-book updates for Binance, Bybit, and OKX, keep `data_source_mode: live` and enable:
+To test public WebSocket top-of-book updates for Binance, Bybit, OKX, and Bitget, keep `data_source_mode: live` and enable:
 
 ```yaml
 market_data:
@@ -244,6 +244,7 @@ market_data:
       - binance
       - bybit
       - okx
+      - bitget
     reconnect_seconds: 5
     stale_after_seconds: 20
     max_symbols_per_connection: 50
@@ -386,6 +387,7 @@ Bitget public futures endpoints:
 - Futures ticker bid/ask, 24h volume, and funding context: `/api/v2/mix/market/tickers?productType=USDT-FUTURES`
 - Futures order book depth: `/api/v2/mix/market/merge-depth`
 - Funding context: `/api/v2/mix/market/current-fund-rate`
+- Public WebSocket ticker channel: `wss://ws.bitget.com/v2/ws/public`, `instType=USDT-FUTURES`, `channel=ticker`
 
 With only one live connector active, cross-exchange arbitrage opportunities will usually be empty because the spread engine needs at least two exchanges for the same symbol.
 

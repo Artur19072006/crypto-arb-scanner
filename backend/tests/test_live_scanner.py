@@ -246,6 +246,90 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opportunities[0].ask_price, 95.0)
         self.assertEqual(opportunities[0].bid_price, 101.0)
 
+    async def test_websocket_mode_can_use_fresh_bitget_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            bitget_snapshot=_snapshot("Bitget", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "Bitget",
+                    bid=89.0,
+                    ask=90.0,
+                    volume_24h_usd=0,
+                    funding_rate_percent=0,
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_bitget=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Bitget")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 90.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+        self.assertEqual(opportunities[0].volume_24h_usd, 1_000_000)
+
+    async def test_websocket_mode_falls_back_to_bitget_rest_when_bitget_websocket_is_stale(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            bitget_snapshot=_snapshot("Bitget", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "Bitget",
+                    bid=89.0,
+                    ask=90.0,
+                    timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_bitget=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "Bitget")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
 
 class StaticSnapshotConnector(ExchangeConnector):
     data_source = "test_rest"
@@ -305,6 +389,7 @@ def _live_config(
     if include_bitget:
         connectors.append("bitget")
         exchanges.append("Bitget")
+        websocket_exchanges.append("bitget")
 
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
