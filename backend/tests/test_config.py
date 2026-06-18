@@ -141,6 +141,8 @@ filters:
         self.assertFalse(config.history.enabled)
         self.assertEqual(config.history.sqlite_path, "data/spread_history.sqlite")
         self.assertEqual(config.history.write_interval_seconds, 10)
+        self.assertEqual(config.history.retention_hours, 168)
+        self.assertEqual(config.history.prune_interval_seconds, 3600)
         self.assertFalse(config.telegram.enabled)
         self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
         self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
@@ -377,6 +379,8 @@ history:
   enabled: true
   sqlite_path: data/custom_spread_history.sqlite
   write_interval_seconds: 30
+  retention_hours: 24
+  prune_interval_seconds: 120
 """,
                 encoding="utf-8",
             )
@@ -389,6 +393,8 @@ history:
         self.assertTrue(config.history.enabled)
         self.assertEqual(config.history.sqlite_path, "data/custom_spread_history.sqlite")
         self.assertEqual(config.history.write_interval_seconds, 30)
+        self.assertEqual(config.history.retention_hours, 24)
+        self.assertEqual(config.history.prune_interval_seconds, 120)
 
     def test_loads_telegram_config_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

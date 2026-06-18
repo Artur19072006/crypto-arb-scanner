@@ -204,6 +204,8 @@ class SpreadHistoryConfig(BaseModel):
     enabled: bool = False
     sqlite_path: str = "data/spread_history.sqlite"
     write_interval_seconds: int = Field(default=10, ge=0)
+    retention_hours: int = Field(default=168, ge=1)
+    prune_interval_seconds: int = Field(default=3600, ge=0)
 
 
 class SpreadHistoryPoint(BaseModel):

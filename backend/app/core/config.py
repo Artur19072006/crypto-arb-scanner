@@ -307,6 +307,19 @@ def _load_history(raw_history: Any) -> SpreadHistoryConfig:
                 )
             ),
         ),
+        retention_hours=max(
+            1,
+            int(raw_history.get("retention_hours", defaults.retention_hours)),
+        ),
+        prune_interval_seconds=max(
+            0,
+            int(
+                raw_history.get(
+                    "prune_interval_seconds",
+                    defaults.prune_interval_seconds,
+                )
+            ),
+        ),
     )
 
 

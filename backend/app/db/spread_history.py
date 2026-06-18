@@ -1,7 +1,7 @@
 import asyncio
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ class SpreadHistoryStore:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._last_write_at_by_path: dict[Path, datetime] = {}
+        self._last_pruned_at_by_path: dict[Path, datetime] = {}
 
     async def ensure_schema(self, sqlite_path: str | Path) -> None:
         path = _resolve_sqlite_path(sqlite_path)
@@ -43,18 +44,23 @@ class SpreadHistoryStore:
         opportunities: list[ArbitrageOpportunity],
         checked_at: datetime | None = None,
     ) -> int:
-        if not config.enabled or not opportunities:
+        if not config.enabled:
             return 0
 
         path = _resolve_sqlite_path(config.sqlite_path)
         now = checked_at or datetime.now(timezone.utc)
         async with self._lock:
+            if not opportunities:
+                await self._prune_old_rows_if_due(path, config, now)
+                return 0
+
             last_write_at = self._last_write_at_by_path.get(path)
             if (
                 last_write_at is not None
                 and config.write_interval_seconds > 0
                 and (now - last_write_at).total_seconds() < config.write_interval_seconds
             ):
+                await self._prune_old_rows_if_due(path, config, now)
                 return 0
 
             inserted = await asyncio.to_thread(
@@ -63,6 +69,7 @@ class SpreadHistoryStore:
                 opportunities,
             )
             self._last_write_at_by_path[path] = now
+            await self._prune_old_rows_if_due(path, config, now)
             return inserted
 
     async def get_history(
@@ -82,6 +89,26 @@ class SpreadHistoryStore:
             short_exchange.lower().strip(),
             limit,
         )
+
+    async def _prune_old_rows_if_due(
+        self,
+        path: Path,
+        config: SpreadHistoryConfig,
+        now: datetime,
+    ) -> int:
+        last_pruned_at = self._last_pruned_at_by_path.get(path)
+        if (
+            last_pruned_at is not None
+            and config.prune_interval_seconds > 0
+            and (now - last_pruned_at).total_seconds()
+            < config.prune_interval_seconds
+        ):
+            return 0
+
+        cutoff = now - timedelta(hours=config.retention_hours)
+        deleted = await asyncio.to_thread(_prune_old_rows_sync, path, cutoff)
+        self._last_pruned_at_by_path[path] = now
+        return deleted
 
 
 def _resolve_sqlite_path(sqlite_path: str | Path) -> Path:
@@ -198,6 +225,23 @@ def _insert_opportunities_sync(
         )
         connection.commit()
     return len(rows)
+
+
+def _prune_old_rows_sync(path: Path, cutoff: datetime) -> int:
+    if not path.exists():
+        return 0
+
+    _ensure_schema_sync(path)
+    with closing(_connect(path)) as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM spread_history
+            WHERE timestamp < ?
+            """,
+            (cutoff.isoformat(),),
+        )
+        connection.commit()
+        return cursor.rowcount
 
 
 def _get_history_sync(

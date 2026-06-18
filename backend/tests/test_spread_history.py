@@ -1,7 +1,7 @@
 import sqlite3
 import unittest
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -84,6 +84,149 @@ class SpreadHistoryStoreTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(inserted, 0)
             self.assertFalse(sqlite_path.exists())
+
+    async def test_disabled_history_does_not_prune_existing_rows(self) -> None:
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        old_timestamp = checked_at - timedelta(hours=169)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [_opportunity(timestamp=old_timestamp)],
+            )
+            config = SpreadHistoryConfig(
+                enabled=False,
+                sqlite_path=str(sqlite_path),
+                retention_hours=168,
+                prune_interval_seconds=0,
+            )
+
+            inserted = await store.record_opportunities(
+                config,
+                [_opportunity(symbol="ETHUSDT", timestamp=checked_at)],
+                checked_at=checked_at,
+            )
+            rows = await store.get_history(
+                sqlite_path,
+                symbol="BTCUSDT",
+                long_exchange="Binance",
+                short_exchange="Bybit",
+                limit=500,
+            )
+
+        self.assertEqual(inserted, 0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].timestamp, old_timestamp)
+
+    async def test_record_opportunities_prunes_old_rows_and_keeps_recent_rows(self) -> None:
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        old_timestamp = checked_at - timedelta(hours=169)
+        recent_timestamp = checked_at - timedelta(hours=1)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(timestamp=old_timestamp),
+                    _opportunity(timestamp=recent_timestamp),
+                ],
+            )
+            config = SpreadHistoryConfig(
+                enabled=True,
+                sqlite_path=str(sqlite_path),
+                write_interval_seconds=0,
+                retention_hours=168,
+                prune_interval_seconds=3600,
+            )
+
+            await store.record_opportunities(
+                config,
+                [_opportunity(symbol="ETHUSDT", timestamp=checked_at)],
+                checked_at=checked_at,
+            )
+            rows = await store.get_history(
+                sqlite_path,
+                symbol="BTCUSDT",
+                long_exchange="Binance",
+                short_exchange="Bybit",
+                limit=500,
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].timestamp, recent_timestamp)
+
+    async def test_pruning_respects_prune_interval_seconds(self) -> None:
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            config = SpreadHistoryConfig(
+                enabled=True,
+                sqlite_path=str(sqlite_path),
+                write_interval_seconds=0,
+                retention_hours=168,
+                prune_interval_seconds=3600,
+            )
+
+            await store.insert_opportunities(
+                sqlite_path,
+                [_opportunity(timestamp=checked_at - timedelta(hours=169))],
+            )
+            await store.record_opportunities(
+                config,
+                [_opportunity(symbol="ETHUSDT", timestamp=checked_at)],
+                checked_at=checked_at,
+            )
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(
+                        symbol="SOLUSDT",
+                        timestamp=checked_at - timedelta(hours=170),
+                    )
+                ],
+            )
+
+            await store.record_opportunities(
+                config,
+                [
+                    _opportunity(
+                        symbol="ETHUSDT",
+                        timestamp=checked_at + timedelta(seconds=3599),
+                    )
+                ],
+                checked_at=checked_at + timedelta(seconds=3599),
+            )
+            rows_before_interval = await store.get_history(
+                sqlite_path,
+                symbol="SOLUSDT",
+                long_exchange="Binance",
+                short_exchange="Bybit",
+                limit=500,
+            )
+
+            await store.record_opportunities(
+                config,
+                [
+                    _opportunity(
+                        symbol="ETHUSDT",
+                        timestamp=checked_at + timedelta(seconds=3600),
+                    )
+                ],
+                checked_at=checked_at + timedelta(seconds=3600),
+            )
+            rows_after_interval = await store.get_history(
+                sqlite_path,
+                symbol="SOLUSDT",
+                long_exchange="Binance",
+                short_exchange="Bybit",
+                limit=500,
+            )
+
+        self.assertEqual(len(rows_before_interval), 1)
+        self.assertEqual(rows_after_interval, [])
 
     async def test_spread_history_api_filters_pair_and_returns_chart_values(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -253,6 +396,7 @@ def _opportunity(
     raw_spread: float = 0.50,
     net_spread: float = 0.30,
     depth_adjusted_net_spread_percent: float | None = None,
+    timestamp: datetime | None = None,
 ) -> ArbitrageOpportunity:
     depth_check = None
     if depth_adjusted_net_spread_percent is not None:
@@ -288,7 +432,7 @@ def _opportunity(
         funding_impact="Good",
         liquidity_status="OK",
         depth_check=depth_check,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(timezone.utc),
     )
 
 

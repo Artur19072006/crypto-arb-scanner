@@ -47,6 +47,8 @@ history:
   enabled: false
   sqlite_path: data/spread_history.sqlite
   write_interval_seconds: 10
+  retention_hours: 168
+  prune_interval_seconds: 3600
 
 fees:
   Binance:
