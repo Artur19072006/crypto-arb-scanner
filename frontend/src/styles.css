@@ -80,7 +80,7 @@ select:disabled {
 .app-shell {
   width: min(1500px, calc(100% - 24px));
   margin: 0 auto;
-  padding: 28px 0 38px;
+  padding: 30px 0 42px;
 }
 
 .top-bar {
@@ -89,8 +89,8 @@ select:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 34px;
-  padding-bottom: 22px;
+  margin-bottom: 40px;
+  padding-bottom: 24px;
 }
 
 .top-bar::after {
@@ -122,17 +122,19 @@ h1 {
   color: #f2f7f4;
   font-size: 1.8rem;
   font-weight: 720;
-  line-height: 1.08;
+  line-height: 1.16;
   letter-spacing: 0;
 }
 
 .brand-title {
   display: inline-block;
+  padding-bottom: 0.08em;
   font-family:
     "Space Grotesk", "Sora", "Manrope", Inter, ui-sans-serif, system-ui,
     sans-serif;
   font-size: 2.55rem;
   font-weight: 760;
+  line-height: 1.18;
   letter-spacing: 0;
   background:
     linear-gradient(180deg, #f7fbf8 0%, #cfdcd4 54%, #91a79b 100%);
@@ -259,9 +261,9 @@ h1 {
 .metrics-band > div {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  padding: 12px 12px;
+  padding: 14px 13px;
   background:
     linear-gradient(180deg, rgba(17, 24, 21, 0.74), rgba(9, 13, 12, 0.86));
 }
@@ -308,7 +310,7 @@ h1 {
 
 .table-section {
   position: relative;
-  margin-top: 30px;
+  margin-top: 36px;
 }
 
 .alerts-panel {
@@ -398,9 +400,9 @@ h1 {
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(128px, 1fr));
-  gap: 12px;
-  margin-top: 30px;
-  padding: 22px;
+  gap: 14px;
+  margin-top: 36px;
+  padding: 24px;
   border: 1px solid rgba(138, 154, 145, 0.12);
   border-radius: 8px;
   background:
@@ -425,11 +427,11 @@ h1 {
 }
 
 .filter-bar::before {
-  top: -16px;
+  top: -19px;
 }
 
 .table-section::before {
-  top: -16px;
+  top: -19px;
 }
 
 .filter-bar label {
@@ -477,8 +479,8 @@ h1 {
 .exchange-filter {
   grid-column: 1 / -1;
   min-width: 0;
-  margin: 4px 0 0;
-  padding: 13px 0 0;
+  margin: 6px 0 0;
+  padding: 15px 0 0;
   border: 0;
   border-top: 1px solid rgba(149, 164, 155, 0.07);
 }
@@ -491,8 +493,8 @@ h1 {
 .exchange-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 9px;
+  margin-top: 10px;
 }
 
 .exchange-option {
@@ -533,9 +535,9 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
-  gap: 9px;
+  gap: 10px;
   justify-content: flex-end;
-  padding-top: 3px;
+  padding-top: 5px;
 }
 
 .filter-actions button {
@@ -583,7 +585,7 @@ table {
 
 th,
 td {
-  padding: 9px 10px;
+  padding: 10px 11px;
   border-bottom: 1px solid rgba(138, 154, 145, 0.075);
   text-align: left;
   vertical-align: middle;
@@ -945,7 +947,7 @@ td:nth-child(4) {
   .top-bar {
     align-items: flex-start;
     flex-direction: column;
-    margin-bottom: 24px;
+    margin-bottom: 30px;
   }
 
   .top-status-group,
@@ -967,12 +969,12 @@ td:nth-child(4) {
   }
 
   .filter-bar {
-    margin-top: 24px;
-    padding: 16px;
+    margin-top: 30px;
+    padding: 18px;
   }
 
   .table-section {
-    margin-top: 24px;
+    margin-top: 30px;
   }
 
   .history-screen {

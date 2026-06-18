@@ -127,12 +127,12 @@ function App() {
   }, [scannerStatus]);
 
   const visibleExchangeOptions = useMemo(
-    () => getVisibleExchangeOptions(scannerStatus, settings),
-    [scannerStatus, settings]
+    () => getVisibleExchangeOptions(scannerStatus, settings, opportunities),
+    [scannerStatus, settings, opportunities]
   );
   const activeExchangeOptions = useMemo(
-    () => getActiveExchangeOptions(scannerStatus, settings),
-    [scannerStatus, settings]
+    () => getActiveExchangeOptions(scannerStatus, settings, opportunities),
+    [scannerStatus, settings, opportunities]
   );
   const totalOpportunities = scannerStatus?.total_opportunity_count
     ?? scannerStatus?.opportunity_count
@@ -914,32 +914,123 @@ function normalizeLimit(value) {
   return LIMIT_OPTIONS.has(normalized) ? normalized : "100";
 }
 
-function getVisibleExchangeOptions(scannerStatus, settings) {
-  const supportedExchanges = Array.isArray(settings?.supported_exchanges)
-    ? settings.supported_exchanges
-    : [];
+function getVisibleExchangeOptions(scannerStatus, settings, opportunities = []) {
+  const statusEnabledExchanges = toStringArray(scannerStatus?.enabled_exchanges);
+  const supportedExchanges = toStringArray(settings?.supported_exchanges);
+  const opportunityExchanges = getOpportunityExchangeNames(opportunities);
+  const statusAndDataExchanges = uniqueExchangeNames([
+    ...statusEnabledExchanges,
+    ...opportunityExchanges
+  ]);
 
   if (scannerStatus?.mode !== "live") {
-    return supportedExchanges;
+    return uniqueExchangeNames([
+      ...statusAndDataExchanges,
+      ...supportedExchanges
+    ]);
   }
 
-  const activeExchanges = getActiveExchangeOptions(scannerStatus, settings);
-  return activeExchanges.length ? activeExchanges : supportedExchanges;
+  const activeExchanges = getActiveExchangeOptions(
+    scannerStatus,
+    settings,
+    opportunities
+  );
+  return activeExchanges.length
+    ? activeExchanges
+    : uniqueExchangeNames([
+        ...statusAndDataExchanges,
+        ...supportedExchanges
+      ]);
 }
 
-function getActiveExchangeOptions(scannerStatus, settings) {
+function getActiveExchangeOptions(scannerStatus, settings, opportunities = []) {
+  const statusEnabledExchanges = toStringArray(scannerStatus?.enabled_exchanges);
+  const supportedExchanges = toStringArray(settings?.supported_exchanges);
+  const opportunityExchanges = getOpportunityExchangeNames(opportunities);
+
   if (scannerStatus?.mode !== "live") {
-    return Array.isArray(settings?.supported_exchanges) ? settings.supported_exchanges : [];
+    return uniqueExchangeNames([
+      ...statusEnabledExchanges,
+      ...opportunityExchanges,
+      ...supportedExchanges
+    ]);
   }
 
-  const supportedExchanges = new Set(settings?.supported_exchanges ?? []);
-  const mappedExchanges = (scannerStatus?.active_connectors ?? [])
-    .map((connector) => CONNECTOR_EXCHANGE_NAMES[connector])
+  const knownExchangeNames = uniqueExchangeNames([
+    ...statusEnabledExchanges,
+    ...supportedExchanges,
+    ...opportunityExchanges
+  ]);
+  const connectorExchanges = toStringArray(scannerStatus?.active_connectors)
+    .map((connector) => getExchangeNameForConnector(connector, knownExchangeNames))
     .filter(Boolean);
 
-  return mappedExchanges.filter((exchange) => (
-    !supportedExchanges.size || supportedExchanges.has(exchange)
-  ));
+  return uniqueExchangeNames([
+    ...statusEnabledExchanges,
+    ...connectorExchanges,
+    ...opportunityExchanges
+  ]);
+}
+
+function getOpportunityExchangeNames(opportunities) {
+  if (!Array.isArray(opportunities)) {
+    return [];
+  }
+
+  return opportunities.flatMap((opportunity) => [
+    opportunity.long_exchange,
+    opportunity.short_exchange
+  ]);
+}
+
+function getExchangeNameForConnector(connector, knownExchangeNames) {
+  const connectorKey = normalizeExchangeKey(connector);
+  if (!connectorKey) {
+    return "";
+  }
+
+  const knownMatch = knownExchangeNames.find(
+    (exchange) => normalizeExchangeKey(exchange) === connectorKey
+  );
+  if (knownMatch) {
+    return knownMatch;
+  }
+
+  return EXCHANGE_LABEL_OVERRIDES[connectorKey] ?? toTitleCase(connectorKey);
+}
+
+function uniqueExchangeNames(exchanges) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const exchange of exchanges) {
+    const label = normalizeTextInput(exchange);
+    const key = normalizeExchangeKey(label);
+    if (!label || !key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    unique.push(label);
+  }
+
+  return unique;
+}
+
+function normalizeExchangeKey(exchange) {
+  return normalizeTextInput(exchange).toLowerCase();
+}
+
+function toStringArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function toTitleCase(value) {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function createEmptyOpportunityMessage(totalOpportunities, filteredOpportunities) {
@@ -1091,11 +1182,9 @@ function formatOptionalPercent(value) {
   return formatPercent(numericValue);
 }
 
-const CONNECTOR_EXCHANGE_NAMES = {
-  binance: "Binance",
-  bybit: "Bybit",
+const EXCHANGE_LABEL_OVERRIDES = {
   okx: "OKX",
-  bitget: "Bitget"
+  kucoin: "KuCoin"
 };
 
 const SORT_BY_OPTIONS = new Set([
