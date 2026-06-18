@@ -1,6 +1,7 @@
 import asyncio
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -8,12 +9,27 @@ from typing import Any
 from app.domain.models import (
     ArbitrageOpportunity,
     SpreadHistoryConfig,
+    SpreadHistoryInterval,
     SpreadHistoryPoint,
+    SpreadHistoryStats,
 )
 from app.services.symbols import normalize_symbol
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SPREAD_HISTORY_BUCKET_SECONDS: dict[SpreadHistoryInterval, int] = {
+    "raw": 0,
+    "5m": 5 * 60,
+    "15m": 15 * 60,
+    "1h": 60 * 60,
+}
+
+
+@dataclass(frozen=True)
+class SpreadHistoryQueryResult:
+    interval: SpreadHistoryInterval
+    rows: list[SpreadHistoryPoint]
+    stats: SpreadHistoryStats
 
 
 class SpreadHistoryStore:
@@ -88,6 +104,28 @@ class SpreadHistoryStore:
             long_exchange.lower().strip(),
             short_exchange.lower().strip(),
             limit,
+        )
+
+    async def query_history(
+        self,
+        sqlite_path: str | Path,
+        symbol: str,
+        long_exchange: str,
+        short_exchange: str,
+        limit: int,
+        interval: SpreadHistoryInterval = "raw",
+        closed_threshold_percent: float = 0.05,
+    ) -> SpreadHistoryQueryResult:
+        path = _resolve_sqlite_path(sqlite_path)
+        return await asyncio.to_thread(
+            _query_history_sync,
+            path,
+            normalize_symbol(symbol),
+            long_exchange.lower().strip(),
+            short_exchange.lower().strip(),
+            limit,
+            interval,
+            closed_threshold_percent,
         )
 
     async def _prune_old_rows_if_due(
@@ -251,9 +289,54 @@ def _get_history_sync(
     short_exchange_key: str,
     limit: int,
 ) -> list[SpreadHistoryPoint]:
+    rows = _get_history_rows_sync(
+        path,
+        symbol_key,
+        long_exchange_key,
+        short_exchange_key,
+        limit,
+    )
+    return [_history_point_from_row(row) for row in rows]
+
+
+def _query_history_sync(
+    path: Path,
+    symbol_key: str,
+    long_exchange_key: str,
+    short_exchange_key: str,
+    limit: int,
+    interval: SpreadHistoryInterval,
+    closed_threshold_percent: float,
+) -> SpreadHistoryQueryResult:
+    rows = _get_history_rows_sync(
+        path,
+        symbol_key,
+        long_exchange_key,
+        short_exchange_key,
+        limit,
+    )
+    raw_points = [_history_point_from_row(row) for row in rows]
+    stats = _history_stats(raw_points, closed_threshold_percent)
+    if interval == "raw":
+        return SpreadHistoryQueryResult(interval=interval, rows=raw_points, stats=stats)
+
+    return SpreadHistoryQueryResult(
+        interval=interval,
+        rows=_bucket_history_points(raw_points, SPREAD_HISTORY_BUCKET_SECONDS[interval]),
+        stats=stats,
+    )
+
+
+def _get_history_rows_sync(
+    path: Path,
+    symbol_key: str,
+    long_exchange_key: str,
+    short_exchange_key: str,
+    limit: int,
+) -> list[sqlite3.Row]:
     _ensure_schema_sync(path)
     with closing(_connect(path)) as connection:
-        rows = connection.execute(
+        return connection.execute(
             """
             SELECT * FROM (
                 SELECT *
@@ -268,8 +351,6 @@ def _get_history_sync(
             """,
             (symbol_key, long_exchange_key, short_exchange_key, limit),
         ).fetchall()
-
-    return [_history_point_from_row(row) for row in rows]
 
 
 def _opportunity_row(opportunity: ArbitrageOpportunity) -> dict[str, Any]:
@@ -324,6 +405,117 @@ def _history_point_from_row(row: sqlite3.Row) -> SpreadHistoryPoint:
         lower_line_percent=-(selected_spread_percent / 2),
         upper_line_percent=selected_spread_percent / 2,
     )
+
+
+def _history_stats(
+    points: list[SpreadHistoryPoint],
+    closed_threshold_percent: float,
+) -> SpreadHistoryStats:
+    if not points:
+        return SpreadHistoryStats()
+
+    spread_values = [point.selected_spread_percent for point in points]
+    first_seen_at = points[0].timestamp
+    last_seen_at = points[-1].timestamp
+    closed_count = sum(
+        1
+        for spread_percent in spread_values
+        if abs(spread_percent) <= closed_threshold_percent
+    )
+    return SpreadHistoryStats(
+        first_seen_at=first_seen_at,
+        last_seen_at=last_seen_at,
+        duration_seconds=max(0.0, (last_seen_at - first_seen_at).total_seconds()),
+        sample_count=len(points),
+        latest_spread_percent=spread_values[-1],
+        min_spread_percent=min(spread_values),
+        max_spread_percent=max(spread_values),
+        closed_before=closed_count > 0,
+        closed_count=closed_count,
+    )
+
+
+def _bucket_history_points(
+    points: list[SpreadHistoryPoint],
+    bucket_seconds: int,
+) -> list[SpreadHistoryPoint]:
+    buckets: dict[datetime, list[SpreadHistoryPoint]] = {}
+    for point in points:
+        bucket_start = _bucket_start(point.timestamp, bucket_seconds)
+        buckets.setdefault(bucket_start, []).append(point)
+
+    return [
+        _aggregate_bucket(bucket_start, bucket_points)
+        for bucket_start, bucket_points in sorted(buckets.items())
+    ]
+
+
+def _bucket_start(timestamp: datetime, bucket_seconds: int) -> datetime:
+    active_timestamp = timestamp
+    if active_timestamp.tzinfo is None:
+        active_timestamp = active_timestamp.replace(tzinfo=timezone.utc)
+    else:
+        active_timestamp = active_timestamp.astimezone(timezone.utc)
+
+    epoch_seconds = int(active_timestamp.timestamp())
+    bucket_epoch = epoch_seconds - (epoch_seconds % bucket_seconds)
+    return datetime.fromtimestamp(bucket_epoch, tz=timezone.utc)
+
+
+def _aggregate_bucket(
+    bucket_start: datetime,
+    points: list[SpreadHistoryPoint],
+) -> SpreadHistoryPoint:
+    latest_point = points[-1]
+    return SpreadHistoryPoint(
+        timestamp=bucket_start,
+        symbol=latest_point.symbol,
+        long_exchange=latest_point.long_exchange,
+        short_exchange=latest_point.short_exchange,
+        ask_price=_average(point.ask_price for point in points),
+        bid_price=_average(point.bid_price for point in points),
+        raw_spread_percent=_average(point.raw_spread_percent for point in points),
+        estimated_net_spread_percent=_optional_average(
+            point.estimated_net_spread_percent for point in points
+        ),
+        depth_adjusted_net_spread_percent=_optional_average(
+            point.depth_adjusted_net_spread_percent for point in points
+        ),
+        estimated_fee_percent=_optional_average(
+            point.estimated_fee_percent for point in points
+        ),
+        volume_24h_usd=_average(point.volume_24h_usd for point in points),
+        long_funding_rate_percent=_optional_average(
+            point.long_funding_rate_percent for point in points
+        ),
+        short_funding_rate_percent=_optional_average(
+            point.short_funding_rate_percent for point in points
+        ),
+        funding_rate_difference_percent=_optional_average(
+            point.funding_rate_difference_percent for point in points
+        ),
+        funding_impact=latest_point.funding_impact,
+        liquidity_status=latest_point.liquidity_status,
+        depth_status=latest_point.depth_status,
+        selected_spread_percent=_average(
+            point.selected_spread_percent for point in points
+        ),
+        lower_line_percent=_average(point.lower_line_percent for point in points),
+        upper_line_percent=_average(point.upper_line_percent for point in points),
+        sample_count=len(points),
+    )
+
+
+def _average(values) -> float:
+    numbers = [float(value) for value in values]
+    return sum(numbers) / len(numbers)
+
+
+def _optional_average(values) -> float | None:
+    numbers = [float(value) for value in values if value is not None]
+    if not numbers:
+        return None
+    return sum(numbers) / len(numbers)
 
 
 def _selected_spread_percent(row: sqlite3.Row) -> float:

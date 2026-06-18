@@ -10,6 +10,7 @@ FundingImpact = Literal["Good", "Neutral", "Bad"]
 DataSourceMode = Literal["mock", "live"]
 MarketDataMode = Literal["rest", "websocket"]
 SymbolSelectionMode = Literal["manual", "auto"]
+SpreadHistoryInterval = Literal["raw", "5m", "15m", "1h"]
 AlertSeverity = Literal["Info", "Watch", "Strong"]
 TelegramParseMode = Literal["HTML", "Markdown", "MarkdownV2"]
 OpportunitySortBy = Literal[
@@ -206,6 +207,7 @@ class SpreadHistoryConfig(BaseModel):
     write_interval_seconds: int = Field(default=10, ge=0)
     retention_hours: int = Field(default=168, ge=1)
     prune_interval_seconds: int = Field(default=3600, ge=0)
+    closed_threshold_percent: float = Field(default=0.05, ge=0)
 
 
 class SpreadHistoryPoint(BaseModel):
@@ -229,6 +231,19 @@ class SpreadHistoryPoint(BaseModel):
     selected_spread_percent: float
     lower_line_percent: float
     upper_line_percent: float
+    sample_count: int | None = Field(default=None, ge=1)
+
+
+class SpreadHistoryStats(BaseModel):
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    duration_seconds: float = Field(default=0, ge=0)
+    sample_count: int = Field(default=0, ge=0)
+    latest_spread_percent: float | None = None
+    min_spread_percent: float | None = None
+    max_spread_percent: float | None = None
+    closed_before: bool = False
+    closed_count: int = Field(default=0, ge=0)
 
 
 class SpreadHistoryResponse(BaseModel):
@@ -237,6 +252,8 @@ class SpreadHistoryResponse(BaseModel):
     short_exchange: str
     limit: int = Field(ge=1)
     returned_count: int = Field(ge=0)
+    interval: SpreadHistoryInterval = "raw"
+    stats: SpreadHistoryStats = Field(default_factory=SpreadHistoryStats)
     rows: list[SpreadHistoryPoint]
 
 

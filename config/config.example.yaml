@@ -51,6 +51,7 @@ history:
   write_interval_seconds: 10
   retention_hours: 168
   prune_interval_seconds: 3600
+  closed_threshold_percent: 0.05
 
 fees:
   Binance:

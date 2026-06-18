@@ -14,6 +14,7 @@ from app.domain.models import (
     ScannerFilters,
     ScannerStatus,
     SortDirection,
+    SpreadHistoryInterval,
     SpreadHistoryResponse,
     TelegramStatusResponse,
 )
@@ -183,9 +184,11 @@ async def get_spread_history(
     symbol: Annotated[str, Query()],
     long_exchange: Annotated[str, Query()],
     short_exchange: Annotated[str, Query()],
+    interval: Annotated[str | None, Query()] = None,
     limit: Annotated[str | None, Query()] = None,
 ) -> SpreadHistoryResponse:
     parsed_limit = _parse_spread_history_limit(limit)
+    parsed_interval = _parse_spread_history_interval(interval)
     normalized_symbol = normalize_symbol(symbol)
     if not normalized_symbol:
         raise HTTPException(status_code=422, detail="symbol is required")
@@ -193,13 +196,16 @@ async def get_spread_history(
     parsed_long_exchange = _parse_required_text(long_exchange, "long_exchange")
     parsed_short_exchange = _parse_required_text(short_exchange, "short_exchange")
     config = get_app_config()
-    rows = await spread_history_store.get_history(
+    history = await spread_history_store.query_history(
         config.history.sqlite_path,
         normalized_symbol,
         parsed_long_exchange,
         parsed_short_exchange,
         parsed_limit,
+        interval=parsed_interval,
+        closed_threshold_percent=config.history.closed_threshold_percent,
     )
+    rows = history.rows
 
     return SpreadHistoryResponse(
         symbol=rows[0].symbol if rows else normalized_symbol,
@@ -207,6 +213,8 @@ async def get_spread_history(
         short_exchange=rows[0].short_exchange if rows else parsed_short_exchange,
         limit=parsed_limit,
         returned_count=len(rows),
+        interval=history.interval,
+        stats=history.stats,
         rows=rows,
     )
 
@@ -439,6 +447,18 @@ def _parse_spread_history_limit(value: str | int | None) -> int:
         )
 
     return parsed
+
+
+def _parse_spread_history_interval(value: str | None) -> SpreadHistoryInterval:
+    normalized = (value or "raw").strip().lower()
+    allowed: set[SpreadHistoryInterval] = {"raw", "5m", "15m", "1h"}
+    if normalized in allowed:
+        return cast(SpreadHistoryInterval, normalized)
+
+    raise HTTPException(
+        status_code=422,
+        detail="interval must be one of raw, 5m, 15m, 1h",
+    )
 
 
 def _parse_required_text(value: str, field_name: str) -> str:

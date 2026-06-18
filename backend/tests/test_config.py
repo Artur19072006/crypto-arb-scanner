@@ -143,6 +143,7 @@ filters:
         self.assertEqual(config.history.write_interval_seconds, 10)
         self.assertEqual(config.history.retention_hours, 168)
         self.assertEqual(config.history.prune_interval_seconds, 3600)
+        self.assertEqual(config.history.closed_threshold_percent, 0.05)
         self.assertFalse(config.telegram.enabled)
         self.assertEqual(config.telegram.bot_token_env, "TELEGRAM_BOT_TOKEN")
         self.assertEqual(config.telegram.chat_id_env, "TELEGRAM_CHAT_ID")
@@ -445,6 +446,7 @@ history:
   write_interval_seconds: 30
   retention_hours: 24
   prune_interval_seconds: 120
+  closed_threshold_percent: 0.08
 """,
                 encoding="utf-8",
             )
@@ -459,6 +461,7 @@ history:
         self.assertEqual(config.history.write_interval_seconds, 30)
         self.assertEqual(config.history.retention_hours, 24)
         self.assertEqual(config.history.prune_interval_seconds, 120)
+        self.assertEqual(config.history.closed_threshold_percent, 0.08)
 
     def test_loads_telegram_config_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

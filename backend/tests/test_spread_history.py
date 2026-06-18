@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.api.routes import get_spread_history
 from app.connectors.base import ExchangeConnector
 from app.connectors.registry import ConnectorRegistry
@@ -256,10 +258,164 @@ class SpreadHistoryStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.symbol, "BTCUSDT")
         self.assertEqual(response.long_exchange, "Binance")
         self.assertEqual(response.short_exchange, "Bybit")
+        self.assertEqual(response.interval, "raw")
         self.assertEqual(response.returned_count, 1)
         self.assertEqual(response.rows[0].selected_spread_percent, 0.30)
         self.assertEqual(response.rows[0].lower_line_percent, -0.15)
         self.assertEqual(response.rows[0].upper_line_percent, 0.15)
+        self.assertIsNone(response.rows[0].sample_count)
+        self.assertEqual(response.stats.sample_count, 1)
+        self.assertEqual(response.stats.latest_spread_percent, 0.30)
+
+    async def test_spread_history_api_aggregates_5m_buckets(self) -> None:
+        base_time = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(net_spread=0.10, timestamp=base_time),
+                    _opportunity(net_spread=0.20, timestamp=base_time + timedelta(minutes=2)),
+                    _opportunity(net_spread=0.40, timestamp=base_time + timedelta(minutes=6)),
+                ],
+            )
+            response = await _spread_history_response(
+                store,
+                _config_with_history(sqlite_path),
+                interval="5m",
+            )
+
+        self.assertEqual(response.interval, "5m")
+        self.assertEqual(response.returned_count, 2)
+        self.assertEqual(response.rows[0].timestamp, base_time)
+        self.assertEqual(response.rows[0].sample_count, 2)
+        self.assertAlmostEqual(response.rows[0].selected_spread_percent, 0.15)
+        self.assertAlmostEqual(response.rows[0].lower_line_percent, -0.075)
+        self.assertAlmostEqual(response.rows[0].upper_line_percent, 0.075)
+        self.assertEqual(
+            response.rows[1].timestamp,
+            datetime(2026, 1, 1, 12, 5, tzinfo=timezone.utc),
+        )
+        self.assertEqual(response.rows[1].sample_count, 1)
+        self.assertEqual(response.rows[1].selected_spread_percent, 0.40)
+
+    async def test_spread_history_api_aggregates_15m_buckets(self) -> None:
+        base_time = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(net_spread=0.30, timestamp=base_time + timedelta(minutes=1)),
+                    _opportunity(net_spread=0.60, timestamp=base_time + timedelta(minutes=14)),
+                    _opportunity(net_spread=0.90, timestamp=base_time + timedelta(minutes=15)),
+                ],
+            )
+            response = await _spread_history_response(
+                store,
+                _config_with_history(sqlite_path),
+                interval="15m",
+            )
+
+        self.assertEqual(response.interval, "15m")
+        self.assertEqual(response.returned_count, 2)
+        self.assertEqual(response.rows[0].timestamp, base_time)
+        self.assertEqual(response.rows[0].sample_count, 2)
+        self.assertAlmostEqual(response.rows[0].selected_spread_percent, 0.45)
+        self.assertEqual(
+            response.rows[1].timestamp,
+            datetime(2026, 1, 1, 12, 15, tzinfo=timezone.utc),
+        )
+        self.assertEqual(response.rows[1].sample_count, 1)
+        self.assertEqual(response.rows[1].selected_spread_percent, 0.90)
+
+    async def test_spread_history_api_aggregates_1h_buckets(self) -> None:
+        base_time = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(net_spread=0.20, timestamp=base_time + timedelta(minutes=5)),
+                    _opportunity(net_spread=0.40, timestamp=base_time + timedelta(minutes=55)),
+                    _opportunity(net_spread=0.80, timestamp=base_time + timedelta(hours=1, minutes=1)),
+                ],
+            )
+            response = await _spread_history_response(
+                store,
+                _config_with_history(sqlite_path),
+                interval="1h",
+            )
+
+        self.assertEqual(response.interval, "1h")
+        self.assertEqual(response.returned_count, 2)
+        self.assertEqual(response.rows[0].timestamp, base_time)
+        self.assertEqual(response.rows[0].sample_count, 2)
+        self.assertAlmostEqual(response.rows[0].selected_spread_percent, 0.30)
+        self.assertEqual(
+            response.rows[1].timestamp,
+            datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(response.rows[1].sample_count, 1)
+        self.assertEqual(response.rows[1].selected_spread_percent, 0.80)
+
+    async def test_spread_history_api_returns_stats_and_closed_counts(self) -> None:
+        base_time = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            store = SpreadHistoryStore()
+            await store.insert_opportunities(
+                sqlite_path,
+                [
+                    _opportunity(net_spread=0.12, timestamp=base_time),
+                    _opportunity(net_spread=0.04, timestamp=base_time + timedelta(minutes=1)),
+                    _opportunity(net_spread=-0.03, timestamp=base_time + timedelta(minutes=2)),
+                    _opportunity(net_spread=0.20, timestamp=base_time + timedelta(minutes=3)),
+                ],
+            )
+            response = await _spread_history_response(
+                store,
+                _config_with_history(sqlite_path, closed_threshold_percent=0.05),
+                interval="raw",
+            )
+
+        self.assertEqual(response.stats.first_seen_at, base_time)
+        self.assertEqual(response.stats.last_seen_at, base_time + timedelta(minutes=3))
+        self.assertEqual(response.stats.duration_seconds, 180)
+        self.assertEqual(response.stats.sample_count, 4)
+        self.assertEqual(response.stats.latest_spread_percent, 0.20)
+        self.assertEqual(response.stats.min_spread_percent, -0.03)
+        self.assertEqual(response.stats.max_spread_percent, 0.20)
+        self.assertTrue(response.stats.closed_before)
+        self.assertEqual(response.stats.closed_count, 2)
+
+    async def test_spread_history_api_rejects_invalid_interval(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sqlite_path = Path(temp_dir) / "spread_history.sqlite"
+            config = _config_with_history(sqlite_path)
+            store = SpreadHistoryStore()
+
+            with (
+                patch("app.api.routes.get_app_config", return_value=config),
+                patch("app.api.routes.spread_history_store", store),
+                self.assertRaises(HTTPException) as raised,
+            ):
+                await get_spread_history(
+                    symbol="BTCUSDT",
+                    long_exchange="Binance",
+                    short_exchange="Bybit",
+                    interval="2m",
+                    limit="500",
+                )
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertEqual(
+            raised.exception.detail,
+            "interval must be one of raw, 5m, 15m, 1h",
+        )
 
     async def test_scanner_writes_history_when_enabled(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -325,13 +481,35 @@ class NoopWebSocketManager:
         return None
 
 
-def _config_with_history(sqlite_path: Path):
+async def _spread_history_response(
+    store: SpreadHistoryStore,
+    config,
+    interval: str | None = None,
+):
+    with (
+        patch("app.api.routes.get_app_config", return_value=config),
+        patch("app.api.routes.spread_history_store", store),
+    ):
+        return await get_spread_history(
+            symbol="btcusdt",
+            long_exchange="binance",
+            short_exchange="bybit",
+            interval=interval,
+            limit="500",
+        )
+
+
+def _config_with_history(
+    sqlite_path: Path,
+    closed_threshold_percent: float = 0.05,
+):
     return _load_config(
         f"""
 history:
   enabled: true
   sqlite_path: "{sqlite_path.as_posix()}"
   write_interval_seconds: 0
+  closed_threshold_percent: {closed_threshold_percent}
 """
     )
 

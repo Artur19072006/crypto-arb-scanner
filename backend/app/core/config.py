@@ -321,6 +321,15 @@ def _load_history(raw_history: Any) -> SpreadHistoryConfig:
                 )
             ),
         ),
+        closed_threshold_percent=max(
+            0.0,
+            float(
+                raw_history.get(
+                    "closed_threshold_percent",
+                    defaults.closed_threshold_percent,
+                )
+            ),
+        ),
     )
 
 
