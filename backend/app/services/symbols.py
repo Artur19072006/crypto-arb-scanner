@@ -1,7 +1,7 @@
 from typing import Literal
 
 
-ExchangeName = Literal["Binance", "Bybit", "OKX", "Bitget", "Gate", "KuCoin"]
+ExchangeName = Literal["Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC", "KuCoin"]
 
 SUPPORTED_NORMALIZED_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
 
@@ -27,6 +27,7 @@ def symbol_format_examples() -> dict[str, str]:
         "OKX": "BTC-USDT-SWAP",
         "Bitget": "BTCUSDT",
         "Gate": "BTC_USDT",
+        "MEXC": "BTC_USDT",
     }
 
 
@@ -36,3 +37,4 @@ def symbol_format_examples() -> dict[str, str]:
 # OKX USDT perpetual swap: BTC-USDT-SWAP
 # Bitget USDT perpetual: BTCUSDT
 # Gate USDT perpetual: BTC_USDT
+# MEXC USDT perpetual: BTC_USDT

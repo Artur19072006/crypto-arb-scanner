@@ -4,6 +4,7 @@ from app.connectors.binance import BinancePublicConnector
 from app.connectors.bybit import BybitPublicConnector
 from app.connectors.fake import FakeExchangeConnector
 from app.connectors.gate import GatePublicConnector
+from app.connectors.mexc import MexcPublicConnector
 from app.connectors.okx import OKXPublicConnector
 from app.domain.models import AppConfig
 
@@ -76,6 +77,14 @@ def build_connector_registry(
     if data_source_mode == "live" and "gate" in enabled:
         registry.register(
             GatePublicConnector(
+                symbol_allowlist=symbol_allowlist,
+                max_symbols=max_symbols,
+            )
+        )
+
+    if data_source_mode == "live" and "mexc" in enabled:
+        registry.register(
+            MexcPublicConnector(
                 symbol_allowlist=symbol_allowlist,
                 max_symbols=max_symbols,
             )

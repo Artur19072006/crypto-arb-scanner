@@ -29,7 +29,7 @@ FALLBACK_FILTERS = ScannerFilters(
     min_raw_spread=0.10,
     min_net_spread=0.00,
     min_volume_24h_usd=400_000,
-    exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate"),
+    exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC"),
 )
 FALLBACK_SYMBOL_ALLOWLIST = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
 

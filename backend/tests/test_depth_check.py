@@ -152,6 +152,47 @@ class DepthCheckApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result[0].depth_check.depth_status, "Unknown")
         self.assertEqual(result[0].symbol, opportunities[0].symbol)
 
+    async def test_mexc_depth_connector_is_used_when_exchange_name_matches(self) -> None:
+        opportunities = [
+            _opportunity(long_exchange="MEXC", short_exchange="Bybit")
+        ]
+
+        result = await apply_depth_checks(
+            opportunities,
+            connectors=[
+                StaticDepthConnector("mexc", "MEXC"),
+                StaticDepthConnector("bybit", "Bybit"),
+            ],
+            depth_config=DepthCheckConfig(
+                enabled=True,
+                target_notional_usd=500.0,
+                max_allowed_slippage_percent=1.0,
+            ),
+        )
+
+        self.assertEqual(result[0].depth_check.depth_status, "OK")
+        self.assertTrue(result[0].depth_check.can_fill_long)
+        self.assertTrue(result[0].depth_check.can_fill_short)
+
+
+class StaticDepthConnector:
+    data_source = "test_public_rest"
+
+    def __init__(self, name: str, exchange_name: str) -> None:
+        self.name = name
+        self.exchange_name = exchange_name
+
+    async def fetch_order_book(
+        self,
+        symbol: str,
+        limit: int = 50,
+    ) -> OrderBookSnapshot:
+        return _order_book(
+            self.exchange_name,
+            asks=[OrderBookLevel(price=100.0, quantity=10.0)],
+            bids=[OrderBookLevel(price=102.0, quantity=10.0)],
+        )
+
 
 def _order_book(
     exchange: str,
@@ -167,11 +208,14 @@ def _order_book(
     )
 
 
-def _opportunity() -> ArbitrageOpportunity:
+def _opportunity(
+    long_exchange: str = "Binance",
+    short_exchange: str = "Bybit",
+) -> ArbitrageOpportunity:
     return ArbitrageOpportunity(
         symbol="BTCUSDT",
-        long_exchange="Binance",
-        short_exchange="Bybit",
+        long_exchange=long_exchange,
+        short_exchange=short_exchange,
         ask_price=100.0,
         bid_price=102.0,
         raw_spread_percent=2.0,

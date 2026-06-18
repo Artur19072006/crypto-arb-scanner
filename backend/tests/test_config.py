@@ -111,7 +111,7 @@ filters:
         self.assertEqual(config.default_filters.min_volume_24h_usd, 400_000)
         self.assertEqual(
             config.default_filters.exchanges,
-            ("Binance", "Bybit", "OKX", "Bitget", "Gate"),
+            ("Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC"),
         )
         self.assertFalse(config.depth_check.enabled)
         self.assertEqual(config.depth_check.target_notional_usd, 1000)
@@ -224,6 +224,40 @@ symbol_allowlist:
 
         self.assertEqual(config.data_source_mode, "live")
         self.assertEqual(config.enabled_connectors, ("bybit", "gate"))
+
+    def test_live_config_can_enable_mexc_public_rest_connector(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+data_source_mode: live
+enabled_connectors:
+  - bybit
+  - mexc
+symbol_allowlist:
+  - BTCUSDT
+fees:
+  MEXC:
+    maker_percent: 0.02
+    taker_percent: 0.06
+filters:
+  enabled_exchanges:
+    - Bybit
+    - MEXC
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertEqual(config.data_source_mode, "live")
+        self.assertEqual(config.enabled_connectors, ("bybit", "mexc"))
+        self.assertEqual(config.fees["MEXC"].taker_percent, 0.06)
+        self.assertEqual(config.default_filters.exchanges, ("Bybit", "MEXC"))
 
     def test_loads_symbol_selection_auto_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

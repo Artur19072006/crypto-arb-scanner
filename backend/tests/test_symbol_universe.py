@@ -113,6 +113,22 @@ class SymbolUniverseBuilderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(selection.symbols_by_connector["bybit"], ("LTCUSDT",))
         self.assertEqual(selection.symbols_by_connector["gate"], ("LTCUSDT",))
 
+    async def test_auto_selection_can_include_mexc(self) -> None:
+        selection = await _build_selection(
+            binance_markets=[],
+            bybit_markets=[
+                _market("Bybit", "LTCUSDT", 3_000_000),
+            ],
+            mexc_markets=[
+                _market("MEXC", "LTC_USDT", 4_000_000),
+            ],
+            config=_config(min_volume_24h_usd=0),
+        )
+
+        self.assertEqual(selection.symbols, ("LTCUSDT",))
+        self.assertEqual(selection.symbols_by_connector["bybit"], ("LTCUSDT",))
+        self.assertEqual(selection.symbols_by_connector["mexc"], ("LTCUSDT",))
+
     async def test_auto_applies_min_and_max_volume_filters(self) -> None:
         selection = await _build_selection(
             binance_markets=[
@@ -221,6 +237,7 @@ async def _build_selection(
     okx_markets: list[MarketSymbol] | None = None,
     bitget_markets: list[MarketSymbol] | None = None,
     gate_markets: list[MarketSymbol] | None = None,
+    mexc_markets: list[MarketSymbol] | None = None,
 ):
     registry = ConnectorRegistry()
     registry.register(StaticSymbolConnector("binance", "Binance", binance_markets))
@@ -231,6 +248,8 @@ async def _build_selection(
         registry.register(StaticSymbolConnector("bitget", "Bitget", bitget_markets))
     if gate_markets is not None:
         registry.register(StaticSymbolConnector("gate", "Gate", gate_markets))
+    if mexc_markets is not None:
+        registry.register(StaticSymbolConnector("mexc", "MEXC", mexc_markets))
     builder = SymbolUniverseBuilder()
     return await builder.build(config, registry)
 
@@ -267,11 +286,12 @@ def _config(
             "OKX": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
             "Bitget": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
             "Gate": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
+            "MEXC": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
         },
         default_filters=ScannerFilters(
-            exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate")
+            exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC")
         ),
-        supported_exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate"),
+        supported_exchanges=("Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC"),
         telegram=TelegramDisplaySettings(),
         config_source="test",
     )

@@ -7,6 +7,7 @@ FALLBACK_EXCHANGE_FEES_BY_EXCHANGE: dict[str, ExchangeFees] = {
     "OKX": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
     "Bitget": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
     "Gate": ExchangeFees(maker_percent=0.02, taker_percent=0.05),
+    "MEXC": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
     "KuCoin": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
 }
 

@@ -139,6 +139,26 @@ class SpreadEngineTests(unittest.TestCase):
         self.assertEqual(opportunity.estimated_fee_percent, 0.21)
         self.assertEqual(opportunity.estimated_net_spread_percent, 1.79)
 
+    def test_calculates_opportunity_using_mexc_snapshot(self) -> None:
+        opportunities = calculate_opportunities(
+            snapshots=[
+                self._snapshot("MEXC", "BTCUSDT", bid=99.0, ask=100.0, volume=900_000),
+                self._snapshot("Bybit", "BTCUSDT", bid=102.0, ask=103.0, volume=1_500_000),
+            ],
+            fees_by_exchange={
+                "MEXC": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
+                "Bybit": ExchangeFees(maker_percent=0.02, taker_percent=0.055),
+            },
+        )
+
+        self.assertEqual(len(opportunities), 1)
+        opportunity = opportunities[0]
+        self.assertEqual(opportunity.long_exchange, "MEXC")
+        self.assertEqual(opportunity.short_exchange, "Bybit")
+        self.assertEqual(opportunity.raw_spread_percent, 2.0)
+        self.assertEqual(opportunity.estimated_fee_percent, 0.23)
+        self.assertEqual(opportunity.estimated_net_spread_percent, 1.77)
+
     @staticmethod
     def _snapshot(
         exchange: str,

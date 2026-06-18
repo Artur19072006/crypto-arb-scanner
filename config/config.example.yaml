@@ -9,6 +9,7 @@ enabled_connectors:
 #   - okx
 #   - bitget
 #   - gate
+#   - mexc
 max_symbols: 3
 # Optional manual override when symbol_selection.mode is manual.
 symbol_allowlist:
@@ -66,6 +67,9 @@ fees:
   Gate:
     maker_percent: 0.02
     taker_percent: 0.05
+  MEXC:
+    maker_percent: 0.02
+    taker_percent: 0.06
   KuCoin:
     maker_percent: 0.02
     taker_percent: 0.06
@@ -80,6 +84,7 @@ filters:
     - OKX
     - Bitget
     - Gate
+    - MEXC
   blacklist:
     symbols: []
     exchanges: []

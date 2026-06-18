@@ -29,6 +29,8 @@ CONNECTOR_EXCHANGE_NAMES = {
     "bybit": "Bybit",
     "okx": "OKX",
     "bitget": "Bitget",
+    "gate": "Gate",
+    "mexc": "MEXC",
 }
 
 
