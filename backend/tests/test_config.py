@@ -134,7 +134,7 @@ filters:
         self.assertFalse(config.market_data.websocket.enabled)
         self.assertEqual(
             config.market_data.websocket.exchanges,
-            ("binance", "bybit", "okx", "bitget", "gate"),
+            ("binance", "bybit", "okx", "bitget", "gate", "mexc"),
         )
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 5)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 20)
@@ -259,6 +259,35 @@ filters:
         self.assertEqual(config.fees["MEXC"].taker_percent, 0.06)
         self.assertEqual(config.default_filters.exchanges, ("Bybit", "MEXC"))
 
+    def test_canonicalizes_exchange_names_in_fees_filters_and_status_list(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.yaml"
+            config_path.write_text(
+                """
+fees:
+  mexc:
+    maker_percent: 0.02
+    taker_percent: 0.06
+filters:
+  enabled_exchanges:
+    - bybit
+    - Mexc
+    - okx
+""",
+                encoding="utf-8",
+            )
+
+            config = load_app_config(
+                config_path=config_path,
+                example_path=root / "config.example.yaml",
+            )
+
+        self.assertIn("MEXC", config.fees)
+        self.assertEqual(config.fees["MEXC"].taker_percent, 0.06)
+        self.assertEqual(config.default_filters.exchanges, ("Bybit", "MEXC", "OKX"))
+        self.assertEqual(config.supported_exchanges, ("MEXC", "Bybit", "OKX"))
+
     def test_loads_symbol_selection_auto_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -377,6 +406,7 @@ market_data:
       - okx
       - bitget
       - gate
+      - mexc
     reconnect_seconds: 7
     stale_after_seconds: 15
     max_symbols_per_connection: 25
@@ -395,7 +425,7 @@ market_data:
         self.assertTrue(config.market_data.websocket.enabled)
         self.assertEqual(
             config.market_data.websocket.exchanges,
-            ("binance", "bybit", "okx", "bitget", "gate"),
+            ("binance", "bybit", "okx", "bitget", "gate", "mexc"),
         )
         self.assertEqual(config.market_data.websocket.reconnect_seconds, 7)
         self.assertEqual(config.market_data.websocket.stale_after_seconds, 15)

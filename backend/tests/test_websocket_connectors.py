@@ -6,12 +6,14 @@ from app.connectors.websocket import (
     BitgetTickerWebSocketConnector,
     BybitTickerWebSocketConnector,
     GateBookTickerWebSocketConnector,
+    MexcTickersWebSocketConnector,
     OKXTickerWebSocketConnector,
     build_public_websocket_connectors,
     parse_binance_book_ticker_message,
     parse_bitget_ticker_message,
     parse_bybit_ticker_message,
     parse_gate_book_ticker_message,
+    parse_mexc_tickers_message,
     parse_okx_ticker_message,
 )
 
@@ -513,6 +515,99 @@ class WebSocketConnectorParsingTests(unittest.TestCase):
             ("BTC_USDT", "ETH_USDT"),
         )
 
+    def test_mexc_tickers_message_maps_top_of_book_snapshots(self) -> None:
+        snapshots = parse_mexc_tickers_message(
+            json.dumps(
+                {
+                    "channel": "push.tickers",
+                    "data": [
+                        {
+                            "symbol": "BTC_USDT",
+                            "lastPrice": 65000,
+                            "fairPrice": 65001,
+                            "maxBidPrice": 65010.50,
+                            "maxBidSize": 1.20,
+                            "minAskPrice": 65011.00,
+                            "minAskSize": 0.80,
+                            "volume24": 10000,
+                            "amount24": 650000000.20,
+                            "fundingRate": 0.0001,
+                            "timestamp": 1710000000000,
+                        },
+                        {
+                            "symbol": "ETH_USDT",
+                            "lastPrice": 3500,
+                            "maxBidPrice": 3499.50,
+                            "minAskPrice": 3500.50,
+                            "volume24": 20000,
+                            "amount24": 0,
+                            "fundingRate": -0.00005,
+                            "timestamp": 1710000001000,
+                        },
+                    ],
+                }
+            ),
+            selected_symbols=("BTCUSDT", "ETHUSDT"),
+        )
+
+        self.assertEqual(len(snapshots), 2)
+        btc = snapshots[0]
+        eth = snapshots[1]
+        self.assertEqual(btc.exchange, "MEXC")
+        self.assertEqual(btc.symbol, "BTCUSDT")
+        self.assertEqual(btc.best_bid, 65010.50)
+        self.assertEqual(btc.best_bid_size, 1.20)
+        self.assertEqual(btc.best_ask, 65011.00)
+        self.assertEqual(btc.best_ask_size, 0.80)
+        self.assertEqual(btc.volume_24h_usd, 650000000.20)
+        self.assertEqual(btc.funding_rate_percent, 0.01)
+        self.assertEqual(btc.source, "websocket")
+        self.assertEqual(eth.symbol, "ETHUSDT")
+        self.assertEqual(eth.volume_24h_usd, 70_000_000)
+        self.assertEqual(eth.funding_rate_percent, -0.005)
+
+    def test_mexc_tickers_message_ignores_unselected_or_non_usdt_symbols(self) -> None:
+        snapshots = parse_mexc_tickers_message(
+            json.dumps(
+                {
+                    "channel": "push.tickers",
+                    "data": [
+                        {
+                            "symbol": "BTC_USDT",
+                            "maxBidPrice": 65010.50,
+                            "minAskPrice": 65011.00,
+                        },
+                        {
+                            "symbol": "ETH_USDT",
+                            "maxBidPrice": 3499.50,
+                            "minAskPrice": 3500.50,
+                        },
+                        {
+                            "symbol": "BTC_USD",
+                            "maxBidPrice": 65010.50,
+                            "minAskPrice": 65011.00,
+                        },
+                    ],
+                }
+            ),
+            selected_symbols=("BTC_USDT",),
+        )
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].symbol, "BTCUSDT")
+
+    def test_mexc_subscription_message_uses_public_all_tickers_channel(self) -> None:
+        connector = MexcTickersWebSocketConnector()
+
+        self.assertEqual(
+            json.loads(connector._subscription_message()),
+            {
+                "method": "sub.tickers",
+                "param": {},
+                "gzip": False,
+            },
+        )
+
     def test_build_public_websocket_connectors_includes_gate_when_enabled(self) -> None:
         connectors = build_public_websocket_connectors(
             ("gate",),
@@ -521,6 +616,29 @@ class WebSocketConnectorParsingTests(unittest.TestCase):
 
         self.assertEqual([connector.name for connector in connectors], ["gate"])
         self.assertIsInstance(connectors[0], GateBookTickerWebSocketConnector)
+
+    def test_build_public_websocket_connectors_includes_mexc_when_enabled(self) -> None:
+        connectors = build_public_websocket_connectors(
+            ("mexc",),
+            reconnect_seconds=5,
+        )
+
+        self.assertEqual([connector.name for connector in connectors], ["mexc"])
+        self.assertIsInstance(connectors[0], MexcTickersWebSocketConnector)
+
+    def test_build_public_websocket_connectors_accepts_display_case_exchange_names(self) -> None:
+        connectors = build_public_websocket_connectors(
+            ("Binance", "Mexc", "OKX"),
+            reconnect_seconds=5,
+        )
+
+        self.assertEqual(
+            [connector.name for connector in connectors],
+            ["binance", "okx", "mexc"],
+        )
+        self.assertIsInstance(connectors[0], BinanceBookTickerWebSocketConnector)
+        self.assertIsInstance(connectors[1], OKXTickerWebSocketConnector)
+        self.assertIsInstance(connectors[2], MexcTickersWebSocketConnector)
 
 
 if __name__ == "__main__":

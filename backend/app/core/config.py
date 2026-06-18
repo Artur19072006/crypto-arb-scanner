@@ -19,6 +19,7 @@ from app.domain.models import (
     TelegramDisplaySettings,
     WebSocketMarketDataConfig,
 )
+from app.services.symbols import exchange_name_key, normalize_exchange_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -120,7 +121,7 @@ def _load_fees(raw_fees: Any) -> dict[str, ExchangeFees]:
     for exchange, raw_exchange_fees in raw_fees.items():
         if not isinstance(exchange, str) or not isinstance(raw_exchange_fees, dict):
             continue
-        fees[exchange] = ExchangeFees(
+        fees[normalize_exchange_name(exchange)] = ExchangeFees(
             maker_percent=float(raw_exchange_fees.get("maker_percent", 0.02)),
             taker_percent=float(raw_exchange_fees.get("taker_percent", 0.06)),
         )
@@ -160,7 +161,7 @@ def _load_filters(raw_filters: Any) -> ScannerFilters:
                 ),
             )
         ),
-        exchanges=_string_tuple(
+        exchanges=_exchange_tuple(
             raw_filters.get("enabled_exchanges", FALLBACK_FILTERS.exchanges)
         ),
     )
@@ -334,7 +335,14 @@ def _load_websocket_market_data(raw_websocket: Any) -> WebSocketMarketDataConfig
             for exchange in _string_tuple(
                 raw_websocket.get("exchanges", defaults.exchanges)
             )
-            if exchange.lower().strip() in {"binance", "bybit", "okx", "bitget", "gate"}
+            if exchange.lower().strip() in {
+                "binance",
+                "bybit",
+                "okx",
+                "bitget",
+                "gate",
+                "mexc",
+            }
         )
     )
 
@@ -480,10 +488,15 @@ def _supported_exchanges(
     fees: dict[str, ExchangeFees],
     filters: ScannerFilters,
 ) -> tuple[str, ...]:
-    configured = list(fees.keys())
-    for exchange in filters.exchanges:
-        if exchange not in configured:
-            configured.append(exchange)
+    configured: list[str] = []
+    configured_keys: set[str] = set()
+    for exchange in (*fees.keys(), *filters.exchanges):
+        display_name = normalize_exchange_name(exchange)
+        key = exchange_name_key(display_name)
+        if key in configured_keys:
+            continue
+        configured.append(display_name)
+        configured_keys.add(key)
     return tuple(configured)
 
 
@@ -497,6 +510,12 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
     return tuple(str(item) for item in value if str(item).strip())
+
+
+def _exchange_tuple(value: Any) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(normalize_exchange_name(exchange) for exchange in _string_tuple(value))
+    )
 
 
 def _depth_status_tuple(value: Any) -> tuple[str, ...]:

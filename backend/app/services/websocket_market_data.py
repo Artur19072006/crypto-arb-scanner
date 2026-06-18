@@ -9,6 +9,7 @@ from app.connectors.websocket import (
 )
 from app.domain.models import AppConfig, MarketSnapshot
 from app.services.market_data_cache import MarketDataCache
+from app.services.symbols import exchange_name_key
 
 
 WebSocketConnectorFactory = Callable[
@@ -348,13 +349,20 @@ def _desired_symbols(
     enabled_exchanges: tuple[str, ...],
     symbols_by_connector: dict[str, tuple[str, ...]],
 ) -> dict[str, tuple[str, ...]]:
-    enabled = set(enabled_exchanges)
+    enabled = {exchange_name_key(exchange) for exchange in enabled_exchanges}
+    desired: dict[str, list[str]] = {}
+    for connector_name, symbols in symbols_by_connector.items():
+        connector_key = exchange_name_key(connector_name)
+        if connector_key not in {"binance", "bybit", "okx", "bitget", "gate", "mexc"}:
+            continue
+        if connector_key not in enabled or not symbols:
+            continue
+
+        desired.setdefault(connector_key, []).extend(symbols)
+
     return {
         connector_name: tuple(dict.fromkeys(symbols))
-        for connector_name, symbols in symbols_by_connector.items()
-        if connector_name in {"binance", "bybit", "okx", "bitget", "gate"}
-        and connector_name in enabled
-        and symbols
+        for connector_name, symbols in desired.items()
     }
 
 
@@ -363,7 +371,11 @@ def _chunked_symbols_by_exchange(
     max_symbols_per_connection: int,
 ) -> dict[str, tuple[tuple[str, ...], ...]]:
     return {
-        exchange: tuple(_chunk_symbols(symbols, max_symbols_per_connection))
+        exchange_name_key(exchange): (
+            (tuple(dict.fromkeys(symbols)),)
+            if exchange_name_key(exchange) == "mexc"
+            else tuple(_chunk_symbols(symbols, max_symbols_per_connection))
+        )
         for exchange, symbols in symbols_by_connector.items()
         if symbols
     }
@@ -386,16 +398,7 @@ def _chunk_key(exchange: str, chunk_index: int) -> str:
 
 
 def _connector_name_from_exchange(exchange: str) -> str:
-    normalized = exchange.lower().strip()
-    if normalized == "binance":
-        return "binance"
-    if normalized == "bybit":
-        return "bybit"
-    if normalized == "okx":
-        return "okx"
-    if normalized == "bitget":
-        return "bitget"
-    return normalized or "unknown"
+    return exchange_name_key(exchange) or "unknown"
 
 
 def _latest_datetime(values) -> datetime | None:

@@ -443,6 +443,201 @@ class LiveScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opportunities[0].ask_price, 99.0)
         self.assertEqual(opportunities[0].bid_price, 101.0)
 
+    async def test_websocket_mode_can_use_fresh_mexc_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            mexc_snapshot=_snapshot("MEXC", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "MEXC",
+                    bid=89.0,
+                    ask=90.0,
+                    volume_24h_usd=0,
+                    funding_rate_percent=0,
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_mexc=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "MEXC")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 90.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+        self.assertEqual(opportunities[0].volume_24h_usd, 1_000_000)
+
+    async def test_websocket_mode_generates_mexc_opportunity_with_lowercase_filter_names(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            mexc_snapshot=_snapshot("MEXC", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "MEXC",
+                    bid=89.0,
+                    ask=90.0,
+                    volume_24h_usd=0,
+                    funding_rate_percent=0,
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_mexc=True,
+                filter_exchange_names=["bybit", "mexc"],
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "MEXC")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 90.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
+    async def test_websocket_mode_auto_selection_empty_uses_allowlist_for_mexc_startup(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        websocket_manager = CapturingWebSocketManager()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            mexc_snapshot=_snapshot("MEXC", bid=98.0, ask=99.0),
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=websocket_manager,
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_mexc=True,
+                selection_mode="auto",
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(
+            websocket_manager.symbols_by_connector,
+            {
+                "binance": ("BTCUSDT",),
+                "bybit": ("BTCUSDT",),
+                "mexc": ("BTCUSDT",),
+            },
+        )
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "MEXC")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
+    async def test_websocket_mode_falls_back_to_mexc_rest_when_mexc_websocket_is_missing(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            mexc_snapshot=_snapshot("MEXC", bid=98.0, ask=99.0),
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_mexc=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "MEXC")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
+    async def test_websocket_mode_falls_back_to_mexc_rest_when_mexc_websocket_is_stale(self) -> None:
+        cache = MarketDataCache()
+        store = OpportunityStore()
+        registry = _live_registry(
+            binance_snapshot=_snapshot("Binance", bid=100.0, ask=101.0),
+            bybit_snapshot=_snapshot("Bybit", bid=101.0, ask=102.0),
+            mexc_snapshot=_snapshot("MEXC", bid=98.0, ask=99.0),
+        )
+        await cache.update_snapshots(
+            [
+                _snapshot(
+                    "MEXC",
+                    bid=89.0,
+                    ask=90.0,
+                    timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
+                    source="websocket",
+                )
+            ],
+            source="websocket",
+        )
+
+        await refresh_mock_scanner_once(
+            cache=cache,
+            store=store,
+            registry=registry,
+            websocket_manager=NoopWebSocketManager(),
+            config=_live_config(
+                market_data_mode="websocket",
+                websocket_enabled=True,
+                include_mexc=True,
+            ),
+        )
+
+        opportunities = await store.get_all_opportunities()
+
+        self.assertEqual(len(opportunities), 1)
+        self.assertEqual(opportunities[0].long_exchange, "MEXC")
+        self.assertEqual(opportunities[0].short_exchange, "Bybit")
+        self.assertEqual(opportunities[0].ask_price, 99.0)
+        self.assertEqual(opportunities[0].bid_price, 101.0)
+
 
 class StaticSnapshotConnector(ExchangeConnector):
     data_source = "test_rest"
@@ -468,12 +663,24 @@ class NoopWebSocketManager:
         return None
 
 
+class CapturingWebSocketManager:
+    def __init__(self) -> None:
+        self.symbols_by_connector = {}
+
+    async def ensure_started(self, config, symbols_by_connector) -> None:
+        self.symbols_by_connector = symbols_by_connector
+
+    async def stop(self) -> None:
+        return None
+
+
 def _live_registry(
     binance_snapshot: MarketSnapshot,
     bybit_snapshot: MarketSnapshot,
     okx_snapshot: MarketSnapshot | None = None,
     bitget_snapshot: MarketSnapshot | None = None,
     gate_snapshot: MarketSnapshot | None = None,
+    mexc_snapshot: MarketSnapshot | None = None,
 ):
     from app.connectors.registry import ConnectorRegistry
 
@@ -486,6 +693,8 @@ def _live_registry(
         registry.register(StaticSnapshotConnector("bitget", bitget_snapshot))
     if gate_snapshot is not None:
         registry.register(StaticSnapshotConnector("gate", gate_snapshot))
+    if mexc_snapshot is not None:
+        registry.register(StaticSnapshotConnector("mexc", mexc_snapshot))
     return registry
 
 
@@ -495,6 +704,9 @@ def _live_config(
     include_okx: bool = False,
     include_bitget: bool = False,
     include_gate: bool = False,
+    include_mexc: bool = False,
+    filter_exchange_names: list[str] | None = None,
+    selection_mode: str | None = None,
 ):
     connectors = ["binance", "bybit"]
     exchanges = ["Binance", "Bybit"]
@@ -511,6 +723,20 @@ def _live_config(
         connectors.append("gate")
         exchanges.append("Gate")
         websocket_exchanges.append("gate")
+    if include_mexc:
+        connectors.append("mexc")
+        exchanges.append("MEXC")
+        websocket_exchanges.append("mexc")
+    filter_exchanges = filter_exchange_names or exchanges
+    symbol_selection = (
+        f"""
+symbol_selection:
+  mode: {selection_mode}
+  min_volume_24h_usd: 0
+"""
+        if selection_mode is not None
+        else ""
+    )
 
     with TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
@@ -523,12 +749,13 @@ enabled_connectors:
 max_symbols: 1
 symbol_allowlist:
   - BTCUSDT
+{symbol_selection}
 filters:
   min_raw_spread: 0
   min_net_spread: -10
   min_volume_24h_usd: 0
   enabled_exchanges:
-{_yaml_list(exchanges, indent=4)}
+{_yaml_list(filter_exchanges, indent=4)}
 market_data:
   mode: {market_data_mode}
   websocket:

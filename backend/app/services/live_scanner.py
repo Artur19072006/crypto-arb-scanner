@@ -19,6 +19,7 @@ from app.services.runtime import (
 )
 from app.services.depth_check import apply_depth_checks
 from app.services.spread_engine import calculate_opportunities
+from app.services.symbols import normalize_symbol
 from app.services.websocket_market_data import WebSocketMarketDataManager
 
 
@@ -56,8 +57,12 @@ async def refresh_mock_scanner_once(
     selected_symbols: tuple[str, ...] | None = None
     selection = await symbol_universe_builder.build(scan_config, active_registry)
     errors: list[str] = list(selection.errors)
+    symbols_by_connector = selection.symbols_by_connector
     if scan_config.data_source_mode == "live":
         selected_symbols = selection.symbols
+        if not selected_symbols and _websocket_market_data_enabled(scan_config):
+            selected_symbols = _fallback_live_symbols(scan_config)
+            symbols_by_connector = {}
         if not selected_symbols and not errors:
             errors.append("No symbols selected for live scanning")
 
@@ -66,7 +71,7 @@ async def refresh_mock_scanner_once(
         _websocket_symbols_by_connector(
             connectors,
             selected_symbols,
-            selection.symbols_by_connector,
+            symbols_by_connector,
             scan_config.data_source_mode,
         ),
     )
@@ -76,9 +81,9 @@ async def refresh_mock_scanner_once(
         connector_symbols = selected_symbols
         if (
             scan_config.data_source_mode == "live"
-            and selection.symbols_by_connector
+            and symbols_by_connector
         ):
-            connector_symbols = selection.symbols_by_connector.get(connector.name, ())
+            connector_symbols = symbols_by_connector.get(connector.name) or selected_symbols
             if not connector_symbols:
                 continue
 
@@ -186,12 +191,25 @@ def _websocket_symbols_by_connector(
     result: dict[str, tuple[str, ...]] = {}
     for connector in connectors:
         if symbols_by_connector:
-            connector_symbols = symbols_by_connector.get(connector.name, ())
+            connector_symbols = symbols_by_connector.get(connector.name) or selected_symbols
         else:
             connector_symbols = selected_symbols
         if connector_symbols:
             result[connector.name] = connector_symbols
     return result
+
+
+def _fallback_live_symbols(config: AppConfig) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            symbol
+            for symbol in (
+                normalize_symbol(raw_symbol)
+                for raw_symbol in config.symbol_allowlist[:config.max_symbols]
+            )
+            if symbol
+        )
+    )
 
 
 async def run_mock_scanner_loop(

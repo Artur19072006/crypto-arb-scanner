@@ -9,7 +9,7 @@ from typing import Any
 import websockets
 
 from app.domain.models import MarketSnapshot
-from app.services.symbols import normalize_symbol
+from app.services.symbols import exchange_name_key, normalize_symbol
 
 
 SnapshotHandler = Callable[[MarketSnapshot], Awaitable[None]]
@@ -398,6 +398,80 @@ class GateBookTickerWebSocketConnector(PublicWebSocketConnector):
         return _gate_contracts(symbols)
 
 
+class MexcTickersWebSocketConnector(PublicWebSocketConnector):
+    name = "mexc"
+    exchange_name = "MEXC"
+    data_source = "mexc_public_websocket"
+
+    def __init__(
+        self,
+        reconnect_seconds: int = 5,
+        max_reconnect_attempts: int = 0,
+        base_url: str = "wss://contract.mexc.com/edge",
+    ) -> None:
+        super().__init__(
+            reconnect_seconds=reconnect_seconds,
+            max_reconnect_attempts=max_reconnect_attempts,
+        )
+        self.base_url = base_url
+
+    async def listen(
+        self,
+        symbols: tuple[str, ...],
+        on_snapshot: SnapshotHandler,
+        on_connection_status: ConnectionStatusHandler,
+        stop_event: asyncio.Event,
+    ) -> None:
+        selected_symbols = _mexc_symbols(symbols)
+        if not selected_symbols:
+            await on_connection_status(self.name, False, "No MEXC WebSocket symbols selected")
+            return
+
+        subscribe_message = self._subscription_message()
+        reconnect_attempts = 0
+        while not stop_event.is_set():
+            try:
+                async with websockets.connect(self.base_url) as websocket:
+                    reconnect_attempts = 0
+                    await websocket.send(subscribe_message)
+                    await on_connection_status(self.name, True, None)
+                    last_ping_at = datetime.now(timezone.utc)
+                    while not stop_event.is_set():
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1)
+                        except TimeoutError:
+                            now = datetime.now(timezone.utc)
+                            if (now - last_ping_at).total_seconds() >= 15:
+                                await websocket.send(_mexc_ping_message())
+                                last_ping_at = now
+                            continue
+
+                        for snapshot in parse_mexc_tickers_message(
+                            message,
+                            selected_symbols=selected_symbols,
+                        ):
+                            await on_snapshot(snapshot)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                reconnect_attempts += 1
+                await on_connection_status(self.name, False, str(exc))
+                if not self.can_reconnect(reconnect_attempts):
+                    break
+                await _sleep_until_stop(stop_event, self.reconnect_seconds)
+
+        await on_connection_status(self.name, False, None)
+
+    def _subscription_message(self) -> str:
+        return json.dumps(
+            {
+                "method": "sub.tickers",
+                "param": {},
+                "gzip": False,
+            }
+        )
+
+
 def parse_binance_book_ticker_message(message: str | bytes) -> MarketSnapshot | None:
     payload = _json_message(message)
     if not isinstance(payload, dict):
@@ -648,13 +722,90 @@ def parse_gate_book_ticker_message(message: str | bytes) -> MarketSnapshot | Non
     )
 
 
+def parse_mexc_tickers_message(
+    message: str | bytes,
+    selected_symbols: tuple[str, ...] | None = None,
+) -> list[MarketSnapshot]:
+    payload = _json_message(message)
+    if not isinstance(payload, dict):
+        return []
+    if payload.get("channel") not in (None, "push.tickers"):
+        return []
+    if payload.get("method") in {"pong", "ping"}:
+        return []
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        tickers = [data]
+    elif isinstance(data, list):
+        tickers = [ticker for ticker in data if isinstance(ticker, dict)]
+    else:
+        return []
+
+    selected = set(_mexc_symbols(selected_symbols or ()))
+    require_selected = selected_symbols is not None
+    snapshots: list[MarketSnapshot] = []
+    for ticker in tickers:
+        symbol = normalize_symbol(str(ticker.get("symbol", "")), "MEXC")
+        if not symbol.endswith("USDT") or len(symbol) <= 4:
+            continue
+        if require_selected and symbol not in selected:
+            continue
+
+        try:
+            best_bid = float(ticker["maxBidPrice"])
+            best_ask = float(ticker["minAskPrice"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        if best_bid <= 0 or best_ask <= 0:
+            continue
+
+        snapshots.append(
+            MarketSnapshot(
+                exchange="MEXC",
+                symbol=symbol,
+                best_bid=best_bid,
+                best_bid_size=_float_or_zero(
+                    _first_present(
+                        ticker.get("maxBidSize"),
+                        ticker.get("bid1Size"),
+                        ticker.get("bidSize"),
+                    )
+                ),
+                best_ask=best_ask,
+                best_ask_size=_float_or_zero(
+                    _first_present(
+                        ticker.get("minAskSize"),
+                        ticker.get("ask1Size"),
+                        ticker.get("askSize"),
+                    )
+                ),
+                volume_24h_usd=_mexc_volume_24h_usd(ticker),
+                funding_rate_percent=_float_or_zero(ticker.get("fundingRate")) * 100,
+                next_funding_time=None,
+                timestamp=_datetime_from_millis(
+                    _first_present(
+                        ticker.get("timestamp"),
+                        payload.get("ts"),
+                        payload.get("sendtime"),
+                    )
+                )
+                or datetime.now(timezone.utc),
+                source="websocket",
+            )
+        )
+
+    return snapshots
+
+
 def build_public_websocket_connectors(
     exchanges: tuple[str, ...],
     reconnect_seconds: int,
     max_reconnect_attempts: int = 0,
 ) -> list[PublicWebSocketConnector]:
     connectors: list[PublicWebSocketConnector] = []
-    enabled = set(exchanges)
+    enabled = {exchange_name_key(exchange) for exchange in exchanges}
     if "binance" in enabled:
         connectors.append(
             BinanceBookTickerWebSocketConnector(
@@ -686,6 +837,13 @@ def build_public_websocket_connectors(
     if "gate" in enabled:
         connectors.append(
             GateBookTickerWebSocketConnector(
+                reconnect_seconds=reconnect_seconds,
+                max_reconnect_attempts=max_reconnect_attempts,
+            )
+        )
+    if "mexc" in enabled:
+        connectors.append(
+            MexcTickersWebSocketConnector(
                 reconnect_seconds=reconnect_seconds,
                 max_reconnect_attempts=max_reconnect_attempts,
             )
@@ -766,6 +924,16 @@ def _gate_contract(symbol: str) -> str:
     return f"{normalized[:-4]}_USDT"
 
 
+def _mexc_symbols(symbols: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            symbol
+            for symbol in (normalize_symbol(raw_symbol, "MEXC") for raw_symbol in symbols)
+            if symbol.endswith("USDT") and len(symbol) > 4
+        )
+    )
+
+
 def _float_or_zero(value: object) -> float:
     if value in (None, ""):
         return 0.0
@@ -789,6 +957,26 @@ def _bitget_volume_24h_usd(ticker: dict[str, Any]) -> float:
     return _float_or_zero(ticker.get("quoteVolume"))
 
 
+def _mexc_volume_24h_usd(ticker: dict[str, Any]) -> float:
+    for field in ("amount24", "turnover24h", "quoteVolume", "amount"):
+        value = _float_or_zero(ticker.get(field))
+        if value > 0:
+            return value
+
+    last_price = _float_or_zero(
+        _first_present(ticker.get("lastPrice"), ticker.get("fairPrice"))
+    )
+    base_volume = _float_or_zero(ticker.get("volume24"))
+    return last_price * base_volume
+
+
+def _first_present(*values: object) -> object:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _gate_ping_message() -> str:
     return json.dumps(
         {
@@ -798,6 +986,10 @@ def _gate_ping_message() -> str:
             "payload": [],
         }
     )
+
+
+def _mexc_ping_message() -> str:
+    return json.dumps({"method": "ping"})
 
 
 async def _sleep_until_stop(stop_event: asyncio.Event, seconds: int) -> None:

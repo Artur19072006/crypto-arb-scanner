@@ -4,6 +4,15 @@ from typing import Literal
 ExchangeName = Literal["Binance", "Bybit", "OKX", "Bitget", "Gate", "MEXC", "KuCoin"]
 
 SUPPORTED_NORMALIZED_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+CANONICAL_EXCHANGE_NAMES = {
+    "binance": "Binance",
+    "bybit": "Bybit",
+    "okx": "OKX",
+    "bitget": "Bitget",
+    "gate": "Gate",
+    "mexc": "MEXC",
+    "kucoin": "KuCoin",
+}
 
 
 def normalize_symbol(symbol: str, exchange: str | None = None) -> str:
@@ -13,6 +22,15 @@ def normalize_symbol(symbol: str, exchange: str | None = None) -> str:
     normalized = normalized.replace("-", "")
 
     return normalized
+
+
+def normalize_exchange_name(exchange: str) -> str:
+    normalized = str(exchange).strip()
+    return CANONICAL_EXCHANGE_NAMES.get(normalized.lower(), normalized)
+
+
+def exchange_name_key(exchange: str) -> str:
+    return normalize_exchange_name(exchange).lower()
 
 
 def is_supported_normalized_symbol(symbol: str) -> bool:

@@ -164,6 +164,145 @@ class WebSocketMarketDataManagerTests(unittest.IsolatedAsyncioTestCase):
 
         await manager.stop()
 
+    async def test_mexc_websocket_snapshot_updates_cache_and_status(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("mexc", "MEXC")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("mexc",),
+                websocket_exchanges=("mexc",),
+            ),
+            {"mexc": ("BTCUSDT",)},
+        )
+        await _wait_for_snapshot(cache)
+        status = await manager.status()
+
+        snapshots = await cache.get_all_snapshots()
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].exchange, "MEXC")
+        self.assertEqual(snapshots[0].symbol, "BTCUSDT")
+        self.assertEqual(status.active_exchanges, ("mexc",))
+        self.assertTrue(status.connected["mexc"])
+        self.assertEqual(status.connection_count["mexc"], 1)
+        self.assertEqual(status.chunk_count["mexc"], 1)
+        self.assertEqual(status.symbol_count["mexc"], 1)
+        self.assertIsNotNone(status.last_message_at["mexc"])
+
+        await manager.stop()
+
+    async def test_websocket_manager_starts_all_configured_exchanges_with_case_insensitive_names(self) -> None:
+        cache = MarketDataCache()
+        display_names = {
+            "binance": "Binance",
+            "bybit": "Bybit",
+            "okx": "OKX",
+            "bitget": "Bitget",
+            "gate": "Gate",
+            "mexc": "MEXC",
+        }
+        factory_exchanges: list[tuple[str, ...]] = []
+
+        def connector_factory(exchanges, reconnect_seconds, max_reconnect_attempts):
+            factory_exchanges.append(exchanges)
+            return [
+                OneShotWebSocketConnector(exchange, display_names[exchange])
+                for exchange in exchanges
+            ]
+
+        manager = WebSocketMarketDataManager(cache, connector_factory=connector_factory)
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("binance", "bybit", "okx", "bitget", "gate", "mexc"),
+                websocket_exchanges=("binance", "bybit", "okx", "bitget", "gate", "mexc"),
+            ),
+            {
+                "Binance": ("BTCUSDT",),
+                "bybit": ("BTCUSDT",),
+                "OKX": ("BTCUSDT",),
+                "Bitget": ("BTCUSDT",),
+                "Gate": ("BTCUSDT",),
+                "Mexc": ("BTCUSDT",),
+            },
+        )
+        await _wait_for_snapshot_count(cache, 6)
+        status = await manager.status()
+
+        self.assertEqual(
+            status.active_exchanges,
+            ("binance", "bitget", "bybit", "gate", "mexc", "okx"),
+        )
+        self.assertEqual(
+            factory_exchanges[0],
+            ("binance", "bitget", "bybit", "gate", "mexc", "okx"),
+        )
+        self.assertTrue(all(status.connected.values()))
+        self.assertEqual(status.symbol_count["mexc"], 1)
+
+        await manager.stop()
+
+    async def test_mexc_websocket_requires_configured_exchange_and_symbols(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("mexc", "MEXC")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("mexc",),
+                websocket_exchanges=("binance",),
+            ),
+            {"mexc": ("BTCUSDT",)},
+        )
+        status_without_websocket_exchange = await manager.status()
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("mexc",),
+                websocket_exchanges=("mexc",),
+            ),
+            {},
+        )
+        status_without_enabled_connector_symbols = await manager.status()
+
+        self.assertEqual(status_without_websocket_exchange.active_exchanges, ())
+        self.assertEqual(status_without_enabled_connector_symbols.active_exchanges, ())
+
+    async def test_mexc_uses_one_all_tickers_chunk_for_large_symbol_lists(self) -> None:
+        cache = MarketDataCache()
+        manager = WebSocketMarketDataManager(
+            cache,
+            connector_factory=lambda exchanges, reconnect_seconds, max_reconnect_attempts: [
+                OneShotWebSocketConnector("mexc", "MEXC")
+            ],
+        )
+
+        await manager.ensure_started(
+            _live_websocket_config(
+                enabled_connectors=("mexc",),
+                websocket_exchanges=("mexc",),
+                max_symbols_per_connection=2,
+            ),
+            {"mexc": ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT")},
+        )
+        await _wait_for_snapshot(cache)
+        status = await manager.status()
+
+        self.assertEqual(status.chunk_count["mexc"], 1)
+        self.assertEqual(status.connection_count["mexc"], 1)
+        self.assertEqual(status.symbol_count["mexc"], 4)
+
+        await manager.stop()
+
     async def test_small_symbol_list_uses_one_websocket_chunk(self) -> None:
         cache = MarketDataCache()
         manager = WebSocketMarketDataManager(

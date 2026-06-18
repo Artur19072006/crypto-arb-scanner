@@ -106,6 +106,47 @@ class MarketDataCacheTests(unittest.IsolatedAsyncioTestCase):
             1,
         )
 
+    async def test_mexc_preferred_snapshots_use_fresh_websocket_top_of_book(self) -> None:
+        cache = MarketDataCache()
+        checked_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+        await cache.update_snapshots([
+            _snapshot(
+                "MEXC",
+                "BTCUSDT",
+                bid=98.0,
+                ask=99.0,
+                volume_24h_usd=2_000_000,
+                funding_rate_percent=0.03,
+                timestamp=checked_at - timedelta(seconds=2),
+                source="rest",
+            ),
+            _snapshot(
+                "MEXC",
+                "BTCUSDT",
+                bid=89.0,
+                ask=90.0,
+                volume_24h_usd=0,
+                funding_rate_percent=0,
+                timestamp=checked_at,
+                source="websocket",
+            ),
+        ])
+
+        snapshots = await cache.get_preferred_snapshots(
+            preferred_source="websocket",
+            stale_after_seconds=20,
+            checked_at=checked_at,
+        )
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].exchange, "MEXC")
+        self.assertEqual(snapshots[0].best_bid, 89.0)
+        self.assertEqual(snapshots[0].best_ask, 90.0)
+        self.assertEqual(snapshots[0].volume_24h_usd, 2_000_000)
+        self.assertEqual(snapshots[0].funding_rate_percent, 0.03)
+        self.assertEqual(snapshots[0].source, "websocket")
+
 
 class OpportunityStoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_opportunities_replaces_list_and_sets_timestamp(self) -> None:

@@ -159,6 +159,33 @@ class SpreadEngineTests(unittest.TestCase):
         self.assertEqual(opportunity.estimated_fee_percent, 0.23)
         self.assertEqual(opportunity.estimated_net_spread_percent, 1.77)
 
+    def test_mexc_is_not_excluded_by_exchange_filter_casing(self) -> None:
+        for exchanges in (("mexc", "bybit"), ("MEXC", "Bybit"), ("Mexc", "BYBIT")):
+            with self.subTest(exchanges=exchanges):
+                opportunities = calculate_opportunities(
+                    snapshots=[
+                        self._snapshot("MEXC", "BTCUSDT", bid=99.0, ask=100.0, volume=900_000),
+                        self._snapshot("Bybit", "BTCUSDT", bid=102.0, ask=103.0, volume=1_500_000),
+                    ],
+                    fees_by_exchange={
+                        "mexc": ExchangeFees(maker_percent=0.02, taker_percent=0.06),
+                        "bybit": ExchangeFees(maker_percent=0.02, taker_percent=0.055),
+                    },
+                    filters=ScannerFilters(
+                        min_raw_spread=0,
+                        min_net_spread=-10,
+                        min_volume_24h_usd=0,
+                        exchanges=exchanges,
+                    ),
+                )
+
+                self.assertEqual(len(opportunities), 1)
+                opportunity = opportunities[0]
+                self.assertEqual(opportunity.long_exchange, "MEXC")
+                self.assertEqual(opportunity.short_exchange, "Bybit")
+                self.assertEqual(opportunity.raw_spread_percent, 2.0)
+                self.assertEqual(opportunity.estimated_fee_percent, 0.23)
+
     @staticmethod
     def _snapshot(
         exchange: str,

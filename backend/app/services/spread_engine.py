@@ -10,6 +10,7 @@ from app.domain.models import (
     MarketSnapshot,
     ScannerFilters,
 )
+from app.services.symbols import exchange_name_key
 
 
 def calculate_opportunities(
@@ -38,11 +39,11 @@ def _apply_snapshot_filters(
     if not filters.exchanges:
         return snapshots
 
-    allowed_exchanges = set(filters.exchanges)
+    allowed_exchanges = {exchange_name_key(exchange) for exchange in filters.exchanges}
     return [
         snapshot
         for snapshot in snapshots
-        if snapshot.exchange in allowed_exchanges
+        if exchange_name_key(snapshot.exchange) in allowed_exchanges
     ]
 
 
@@ -120,9 +121,25 @@ def _round_trip_taker_fees(
     short_exchange: str,
     fees_by_exchange: dict[str, ExchangeFees],
 ) -> float:
-    long_fee = fees_by_exchange.get(long_exchange, FALLBACK_EXCHANGE_FEES)
-    short_fee = fees_by_exchange.get(short_exchange, FALLBACK_EXCHANGE_FEES)
+    long_fee = _exchange_fees(long_exchange, fees_by_exchange)
+    short_fee = _exchange_fees(short_exchange, fees_by_exchange)
     return (long_fee.taker_percent * 2) + (short_fee.taker_percent * 2)
+
+
+def _exchange_fees(
+    exchange: str,
+    fees_by_exchange: dict[str, ExchangeFees],
+) -> ExchangeFees:
+    fee = fees_by_exchange.get(exchange)
+    if fee is not None:
+        return fee
+
+    exchange_key = exchange_name_key(exchange)
+    for configured_exchange, configured_fee in fees_by_exchange.items():
+        if exchange_name_key(configured_exchange) == exchange_key:
+            return configured_fee
+
+    return FALLBACK_EXCHANGE_FEES
 
 
 def _apply_opportunity_filters(
@@ -136,7 +153,7 @@ def filter_opportunities(
     opportunities: list[ArbitrageOpportunity],
     filters: ScannerFilters,
 ) -> list[ArbitrageOpportunity]:
-    allowed_exchanges = set(filters.exchanges)
+    allowed_exchanges = {exchange_name_key(exchange) for exchange in filters.exchanges}
     filtered: list[ArbitrageOpportunity] = []
     for opportunity in opportunities:
         if (
@@ -155,8 +172,8 @@ def filter_opportunities(
         ):
             continue
         if allowed_exchanges and (
-            opportunity.long_exchange not in allowed_exchanges
-            or opportunity.short_exchange not in allowed_exchanges
+            exchange_name_key(opportunity.long_exchange) not in allowed_exchanges
+            or exchange_name_key(opportunity.short_exchange) not in allowed_exchanges
         ):
             continue
 

@@ -2,7 +2,9 @@ import unittest
 
 from app.services.symbols import (
     SUPPORTED_NORMALIZED_SYMBOLS,
+    exchange_name_key,
     is_supported_normalized_symbol,
+    normalize_exchange_name,
     normalize_symbol,
     symbol_format_examples,
 )
@@ -37,6 +39,13 @@ class SymbolNormalizationTests(unittest.TestCase):
         self.assertEqual(SUPPORTED_NORMALIZED_SYMBOLS, ("BTCUSDT", "ETHUSDT", "SOLUSDT"))
         self.assertTrue(is_supported_normalized_symbol("BTC-USDT-SWAP"))
         self.assertFalse(is_supported_normalized_symbol("DOGEUSDT"))
+
+    def test_normalizes_exchange_display_names_for_filter_matching(self) -> None:
+        self.assertEqual(normalize_exchange_name("mexc"), "MEXC")
+        self.assertEqual(normalize_exchange_name("Mexc"), "MEXC")
+        self.assertEqual(normalize_exchange_name("okx"), "OKX")
+        self.assertEqual(exchange_name_key("MEXC"), "mexc")
+        self.assertEqual(exchange_name_key("mexc"), "mexc")
 
 
 if __name__ == "__main__":
