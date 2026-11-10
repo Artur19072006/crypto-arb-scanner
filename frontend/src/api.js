@@ -87,12 +87,14 @@ export async function fetchSpreadHistory({
   symbol,
   longExchange,
   shortExchange,
+  interval = "raw",
   limit = 500
 }) {
   const params = new URLSearchParams();
   addTextParam(params, "symbol", symbol);
   addTextParam(params, "long_exchange", longExchange);
   addTextParam(params, "short_exchange", shortExchange);
+  addTextParam(params, "interval", interval);
   addNumericParam(params, "limit", limit);
 
   const response = await fetch(`/api/spread-history?${params.toString()}`);

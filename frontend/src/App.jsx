@@ -609,6 +609,7 @@ function SpreadHistoryView({ selection }) {
   const [history, setHistory] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
+  const [interval, setInterval] = useState("raw");
 
   useEffect(() => {
     let isMounted = true;
@@ -622,6 +623,7 @@ function SpreadHistoryView({ selection }) {
           symbol: selection.symbol,
           longExchange: selection.longExchange,
           shortExchange: selection.shortExchange,
+          interval,
           limit: 500
         });
         if (isMounted) {
@@ -641,34 +643,48 @@ function SpreadHistoryView({ selection }) {
     return () => {
       isMounted = false;
     };
-  }, [selection]);
+  }, [selection, interval]);
 
   const rows = Array.isArray(history?.rows) ? history.rows : [];
-  const stats = useMemo(() => summarizeHistoryRows(rows), [rows]);
+  const stats = useMemo(() => normalizeHistoryStats(history?.stats, rows), [history, rows]);
+  const statsItems = useMemo(() => createHistoryStatsItems(stats), [stats]);
 
   return (
     <section className="history-screen" aria-label="Spread history">
-      <div className="history-heading">
+      <div className="history-toolbar">
         <div>
-          <span className="metric-label">Pair</span>
-          <strong>{selection.symbol}</strong>
+          <p className="history-kicker">Spread analytics</p>
+          <h2>{selection.symbol}</h2>
+          <p>{selection.longExchange} long / {selection.shortExchange} short</p>
         </div>
-        <div>
-          <span className="metric-label">Direction</span>
-          <strong>{selection.longExchange} long / {selection.shortExchange} short</strong>
+        <div className="interval-selector" aria-label="History interval">
+          {HISTORY_INTERVALS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={interval === option.value ? "active" : ""}
+              onClick={() => setInterval(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
-        <div>
-          <span className="metric-label">Latest spread</span>
-          <strong>{stats.latest === null ? "-" : formatPercent(stats.latest)}</strong>
-        </div>
-        <div>
-          <span className="metric-label">Max spread</span>
-          <strong>{stats.max === null ? "-" : formatPercent(stats.max)}</strong>
-        </div>
-        <div>
-          <span className="metric-label">Rows</span>
-          <strong>{history?.returned_count ?? rows.length}</strong>
-        </div>
+      </div>
+
+      <div className="history-stats-grid" aria-label="History statistics">
+        {statsItems.map((item) => (
+          <div key={item.label} className="history-stat-card">
+            <span className="metric-label">{item.label}</span>
+            <strong>{item.value}</strong>
+            {item.detail && <small>{item.detail}</small>}
+          </div>
+        ))}
+      </div>
+
+      <div className="history-explainer">
+        <span><i className="legend-swatch upper" /> Upper line</span>
+        <span><i className="legend-swatch lower" /> Lower line</span>
+        <p>Distance between the two lines is the total spread. 0% means prices converged.</p>
       </div>
 
       {status === "loading" && (
@@ -678,14 +694,17 @@ function SpreadHistoryView({ selection }) {
         <p className="error-message">{error}</p>
       )}
       {status === "ready" && rows.length === 0 && (
-        <p className="empty-state history-message">No history stored for this direction yet.</p>
+        <p className="empty-state history-message">
+          No history stored for this exact symbol, long exchange, and short exchange yet. Samples appear after the scanner records this direction.
+        </p>
       )}
       {status === "ready" && rows.length > 0 && (
         <>
-          <SpreadHistoryChart rows={rows} />
+          <SpreadHistoryChart rows={rows} stats={stats} />
           <div className="history-footer">
-            <span>First {formatDateTime(rows[0].timestamp)}</span>
-            <span>Latest {formatDateTime(rows[rows.length - 1].timestamp)}</span>
+            <span>Interval {history?.interval ?? interval}</span>
+            <span>Returned {history?.returned_count ?? rows.length} rows</span>
+            <span>Raw samples {formatNumber(stats.sampleCount, 0)}</span>
           </div>
         </>
       )}
@@ -693,14 +712,15 @@ function SpreadHistoryView({ selection }) {
   );
 }
 
-function SpreadHistoryChart({ rows }) {
+function SpreadHistoryChart({ rows, stats }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
   const width = 920;
-  const height = 360;
+  const height = 410;
   const padding = {
-    top: 18,
-    right: 22,
-    bottom: 28,
-    left: 54
+    top: 28,
+    right: 36,
+    bottom: 58,
+    left: 72
   };
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
@@ -712,96 +732,133 @@ function SpreadHistoryChart({ rows }) {
       Math.abs(Number(row.selected_spread_percent) || 0)
     ])
   );
-  const yExtent = maxAbsValue * 1.15;
-  const lowerPoints = createLinePoints(rows, "lower_line_percent", {
+  const yExtent = createChartExtent(maxAbsValue);
+  const chart = {
     padding,
     innerWidth,
     innerHeight,
     yExtent
-  });
-  const upperPoints = createLinePoints(rows, "upper_line_percent", {
-    padding,
-    innerWidth,
-    innerHeight,
-    yExtent
-  });
+  };
+  const lowerPoints = createLinePoints(rows, "lower_line_percent", chart);
+  const upperPoints = createLinePoints(rows, "upper_line_percent", chart);
+  const chartPointData = rows.map((row, index) => ({
+    row,
+    ...getChartPoint(rows, index, "upper_line_percent", chart)
+  }));
   const zeroY = yToChart(0, padding, innerHeight, yExtent);
-  const singlePoint = rows.length === 1
-    ? {
-        x: padding.left + innerWidth / 2,
-        upperY: yToChart(Number(rows[0].upper_line_percent) || 0, padding, innerHeight, yExtent),
-        lowerY: yToChart(Number(rows[0].lower_line_percent) || 0, padding, innerHeight, yExtent)
-      }
-    : null;
+  const yTicks = [-yExtent, -yExtent / 2, 0, yExtent / 2, yExtent];
+  const xTicks = createChartTickIndexes(rows.length);
+  const tooltipPoint = hoverIndex === null ? null : chartPointData[hoverIndex];
 
   return (
     <div className="history-chart-wrap">
-      <svg
-        className="history-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="Normalized spread history chart"
-      >
-        <line
-          x1={padding.left}
-          x2={width - padding.right}
-          y1={zeroY}
-          y2={zeroY}
-          className="chart-zero-line"
-        />
-        <line
-          x1={padding.left}
-          x2={padding.left}
-          y1={padding.top}
-          y2={height - padding.bottom}
-          className="chart-axis-line"
-        />
-        <line
-          x1={padding.left}
-          x2={width - padding.right}
-          y1={height - padding.bottom}
-          y2={height - padding.bottom}
-          className="chart-axis-line"
-        />
-        <text x={12} y={padding.top + 4} className="chart-label">
-          {formatPercent(yExtent)}
-        </text>
-        <text x={28} y={zeroY - 6} className="chart-label">
-          0%
-        </text>
-        <text x={8} y={height - padding.bottom} className="chart-label">
-          {formatPercent(-yExtent)}
-        </text>
-        <polyline points={upperPoints} className="chart-line chart-line-upper" />
-        <polyline points={lowerPoints} className="chart-line chart-line-lower" />
-        {singlePoint && (
-          <>
-            <circle cx={singlePoint.x} cy={singlePoint.upperY} r="4" className="chart-point-upper" />
-            <circle cx={singlePoint.x} cy={singlePoint.lowerY} r="4" className="chart-point-lower" />
-          </>
+      <div className="history-chart-stage" onMouseLeave={() => setHoverIndex(null)}>
+        <svg
+          className="history-chart"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="Spread history chart with upper, lower, and zero percent lines"
+        >
+          {yTicks.map((tick) => {
+            const y = yToChart(tick, padding, innerHeight, yExtent);
+            return (
+              <g key={tick}>
+                <line
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                  className={tick === 0 ? "chart-zero-line" : "chart-grid-line"}
+                />
+                <text x={padding.left - 12} y={y + 4} className="chart-label chart-y-label" textAnchor="end">
+                  {formatPercent(tick)}
+                </text>
+              </g>
+            );
+          })}
+          <line
+            x1={padding.left}
+            x2={padding.left}
+            y1={padding.top}
+            y2={height - padding.bottom}
+            className="chart-axis-line"
+          />
+          <line
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={height - padding.bottom}
+            y2={height - padding.bottom}
+            className="chart-axis-line"
+          />
+          {xTicks.map((index) => {
+            const point = chartPointData[index];
+            return (
+              <g key={index}>
+                <line
+                  x1={point.x}
+                  x2={point.x}
+                  y1={padding.top}
+                  y2={height - padding.bottom}
+                  className="chart-x-grid-line"
+                />
+                <text x={point.x} y={height - 24} className="chart-label chart-x-label" textAnchor="middle">
+                  {formatChartTime(point.row.timestamp)}
+                </text>
+              </g>
+            );
+          })}
+          <polyline points={upperPoints} className="chart-line chart-line-upper" />
+          <polyline points={lowerPoints} className="chart-line chart-line-lower" />
+          {chartPointData.map((point, index) => (
+            <g key={`${point.row.timestamp}-${index}`}>
+              <rect
+                x={point.x - Math.max(10, innerWidth / Math.max(rows.length, 1) / 2)}
+                y={padding.top}
+                width={Math.max(20, innerWidth / Math.max(rows.length, 1))}
+                height={innerHeight}
+                className="chart-hit-zone"
+                onMouseEnter={() => setHoverIndex(index)}
+              />
+              {hoverIndex === index && (
+                <line x1={point.x} x2={point.x} y1={padding.top} y2={height - padding.bottom} className="chart-hover-line" />
+              )}
+            </g>
+          ))}
+        </svg>
+        {tooltipPoint && (
+          <div
+            className="history-tooltip"
+            style={{
+              left: `${(tooltipPoint.x / width) * 100}%`,
+              top: `${(tooltipPoint.y / height) * 100}%`
+            }}
+          >
+            <strong>{formatDateTime(tooltipPoint.row.timestamp)}</strong>
+            <span>Total spread {formatPercent(getNumber(tooltipPoint.row.selected_spread_percent))}</span>
+          </div>
         )}
-      </svg>
-      <div className="history-legend">
-        <span><i className="legend-swatch upper" /> Upper line</span>
-        <span><i className="legend-swatch lower" /> Lower line</span>
-        <span><i className="legend-swatch center" /> 0%</span>
+      </div>
+      <div className="history-chart-summary">
+        <span>Total spread range {formatNullablePercent(stats.minSpread)} to {formatNullablePercent(stats.maxSpread)}</span>
+        <span>0% convergence line is highlighted</span>
       </div>
     </div>
   );
 }
 
 function createLinePoints(rows, key, chart) {
-  if (rows.length === 1) {
-    const y = yToChart(Number(rows[0][key]) || 0, chart.padding, chart.innerHeight, chart.yExtent);
-    const x = chart.padding.left + chart.innerWidth / 2;
-    return `${x},${y}`;
-  }
-
   return rows.map((row, index) => {
-    const x = chart.padding.left + (index / (rows.length - 1)) * chart.innerWidth;
-    const y = yToChart(Number(row[key]) || 0, chart.padding, chart.innerHeight, chart.yExtent);
-    return `${x},${y}`;
+    const point = getChartPoint(rows, index, key, chart);
+    return `${point.x},${point.y}`;
   }).join(" ");
+}
+
+function getChartPoint(rows, index, key, chart) {
+  const x = rows.length === 1
+    ? chart.padding.left + chart.innerWidth / 2
+    : chart.padding.left + (index / (rows.length - 1)) * chart.innerWidth;
+  const y = yToChart(getNumber(rows[index][key]), chart.padding, chart.innerHeight, chart.yExtent);
+  return { x, y };
 }
 
 function yToChart(value, padding, innerHeight, yExtent) {
@@ -809,22 +866,146 @@ function yToChart(value, padding, innerHeight, yExtent) {
   return padding.top + ratio * innerHeight;
 }
 
-function summarizeHistoryRows(rows) {
-  if (!rows.length) {
+function createChartExtent(maxAbsValue) {
+  const padded = Math.max(0.05, maxAbsValue * 1.2);
+  if (padded <= 0.1) {
+    return 0.1;
+  }
+  if (padded <= 0.5) {
+    return Math.ceil(padded * 10) / 10;
+  }
+  return Math.ceil(padded * 2) / 2;
+}
+
+function createChartTickIndexes(rowCount) {
+  if (rowCount <= 1) {
+    return [0];
+  }
+  const indexes = [0, Math.floor((rowCount - 1) / 2), rowCount - 1];
+  return Array.from(new Set(indexes));
+}
+
+function normalizeHistoryStats(apiStats, rows) {
+  if (apiStats) {
     return {
-      latest: null,
-      max: null
+      firstSeenAt: apiStats.first_seen_at ?? null,
+      lastSeenAt: apiStats.last_seen_at ?? null,
+      durationSeconds: getNumber(apiStats.duration_seconds),
+      sampleCount: Number(apiStats.sample_count) || 0,
+      latestSpread: toNullableNumber(apiStats.latest_spread_percent),
+      minSpread: toNullableNumber(apiStats.min_spread_percent),
+      maxSpread: toNullableNumber(apiStats.max_spread_percent),
+      closedBefore: Boolean(apiStats.closed_before),
+      closedCount: Number(apiStats.closed_count) || 0
     };
   }
 
   const spreads = rows
-    .map((row) => Number(row.selected_spread_percent))
-    .filter((value) => Number.isFinite(value));
-
+    .map((row) => toNullableNumber(row.selected_spread_percent))
+    .filter((value) => value !== null);
+  const latest = spreads.length ? spreads[spreads.length - 1] : null;
   return {
-    latest: Number(rows[rows.length - 1].selected_spread_percent),
-    max: spreads.length ? Math.max(...spreads) : null
+    firstSeenAt: rows[0]?.timestamp ?? null,
+    lastSeenAt: rows[rows.length - 1]?.timestamp ?? null,
+    durationSeconds: rows.length > 1
+      ? Math.max(0, (new Date(rows[rows.length - 1].timestamp) - new Date(rows[0].timestamp)) / 1000)
+      : 0,
+    sampleCount: rows.length,
+    latestSpread: latest,
+    minSpread: spreads.length ? Math.min(...spreads) : null,
+    maxSpread: spreads.length ? Math.max(...spreads) : null,
+    closedBefore: false,
+    closedCount: 0
   };
+}
+
+function createHistoryStatsItems(stats) {
+  return [
+    {
+      label: "First seen",
+      value: formatHistoryDate(stats.firstSeenAt)
+    },
+    {
+      label: "Last seen",
+      value: formatHistoryDate(stats.lastSeenAt)
+    },
+    {
+      label: "Duration",
+      value: formatHistoryDuration(stats.durationSeconds)
+    },
+    {
+      label: "Latest spread",
+      value: formatNullablePercent(stats.latestSpread)
+    },
+    {
+      label: "Min spread",
+      value: formatNullablePercent(stats.minSpread)
+    },
+    {
+      label: "Max spread",
+      value: formatNullablePercent(stats.maxSpread)
+    },
+    {
+      label: "Closed before",
+      value: stats.closedBefore ? "Yes" : "No",
+      detail: `${formatNumber(stats.closedCount, 0)} close samples`
+    },
+    {
+      label: "Samples",
+      value: formatNumber(stats.sampleCount, 0)
+    }
+  ];
+}
+
+function formatHistoryDate(value) {
+  return value ? formatDateTime(value) : "-";
+}
+
+function formatHistoryDuration(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return `${minutes}m`;
+}
+
+function formatNullablePercent(value) {
+  return value === null ? "-" : formatPercent(value);
+}
+
+function formatChartTime(value) {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "-";
+  }
+
+  return timestamp.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function toNullableNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function DepthCheckCell({ depthCheck }) {
@@ -1186,6 +1367,13 @@ const EXCHANGE_LABEL_OVERRIDES = {
   okx: "OKX",
   kucoin: "KuCoin"
 };
+
+const HISTORY_INTERVALS = [
+  { label: "Raw", value: "raw" },
+  { label: "5m", value: "5m" },
+  { label: "15m", value: "15m" },
+  { label: "1h", value: "1h" }
+];
 
 const SORT_BY_OPTIONS = new Set([
   "raw_spread",
